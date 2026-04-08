@@ -107,5 +107,5 @@ For that reason, `simple-app/` includes its own `.dockerignore`. The parent `.do
 - [x] Simple HTTP application created and documented
 - [x] Nginx configuration defined
 - [x] Local build commands documented for both services
-- [ ] Both images built successfully locally
-- [ ] Both images pushed to Docker Hub and verified on another machine
+- [x] Both images built successfully locally
+- [x] Both images pushed to Docker Hub and verified on another machine
