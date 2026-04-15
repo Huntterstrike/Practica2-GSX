@@ -1,23 +1,53 @@
 services:
   nginx:
-    build: ../week-08-docker/nginx
-    container_name: nginx-server
+    build: ../../week-08-docker/nginx
     ports:
-      - "80:80"
-    restart: always
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
+      - "8080:80"
     depends_on:
-      - simple-app
+      simple-app:
+        condition: service_healthy
+    restart: always
     networks:
       - gsx-network
 
   simple-app:
-    build: ../week-08-docker/simple-app
-    container_name: simple-app
+    build: ../../week-08-docker/simple-app
+    env_file:
+      - .env
+    volumes:
+      - app-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - gsx-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:alpine
+    restart: always
+    volumes:
+      - redis-data:/data
+    networks:
+      - gsx-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  dozzle:
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9999:8080"
     restart: always
     networks:
       - gsx-network
@@ -25,3 +55,7 @@ services:
 networks:
   gsx-network:
     driver: bridge
+
+volumes:
+  app-data:
+  redis-data:

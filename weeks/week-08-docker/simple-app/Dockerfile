@@ -10,6 +10,11 @@ RUN addgroup -S app && adduser -S app -G app
 
 COPY app.py .
 
+RUN mkdir -p /data && chown app:app /data
+
+# Instalar redis client
+RUN pip install --no-cache-dir redis
+
 USER app
 
 EXPOSE 5000
