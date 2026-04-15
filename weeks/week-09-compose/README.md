@@ -1,64 +1,163 @@
-# Week 9: Multi-container Orchestration (Docker Compose)
+# Week 9: Multi-Container Orchestration (Docker Compose)
 
-This week focused on connecting our isolated containers into a functional microservices architecture using **Docker Compose**. We integrated the Nginx reverse proxy with the Python backend application.
+This week connects the containers from Week 8 into a small multi-service stack managed with Docker Compose. The stack includes:
+- `nginx`: entry point and reverse proxy.
+- `simple-app`: Python backend service.
+- `redis`: persistent data store for the backend visit counter.
 
----
+## 1. Architecture
 
-## 1. Architecture Overview
-
-We implemented a two-tier architecture:
-1.  **Nginx (Frontend/Proxy)**: Acts as the entry point, serving static files and routing API requests.
-2.  **Simple-App (Backend)**: A non-root Python service providing programmatic responses.
-
-### Network Design (Service Discovery)
-Unlike Week 8 where containers were isolated, in Week 9 they share a custom bridge network called `gsx-network`.
-- **Service Discovery**: Nginx no longer needs an IP address to find the backend. It uses the service name `http://simple-app:5000/` defined in the Compose file. Docker's internal DNS resolves this automatically.
-
----
-
-## 2. Configuration & Orchestration
-
-### Docker Compose Highlights
-- **`depends_on`**: Ensures the backend starts before the frontend.
-- **`deploy.resources`**: We migrated the CPU and RAM limits from the `docker run` command of Week 8 directly into the Compose file, ensuring infrastructure-as-code consistency.
-- **Security**: Both services run with non-root users (`nginx` and `app`).
-
-### Nginx Integration
-We enabled the `/api` location block in `default.conf` to act as a reverse proxy:
-```nginx
-location /api {
-    proxy_pass http://simple-app:5000/;
-    proxy_set_header Host $host;
-}
+```mermaid
+flowchart LR
+    Client[Browser / curl] --> Nginx[Nginx :8080]
+    Nginx -->|/api| App[simple-app :5000]
+    App --> Redis[(Redis :6379)]
+    Redis --> Volume[(redis-data volume)]
 ```
 
----
+### Network Design
 
-## 3. Deployment Instructions
+All services are attached to the custom bridge network `gsx-network`.
 
-### Start the infrastructure
-From the `weeks/week-09-compose` directory:
+This gives us:
+- **Service discovery**: containers can reach each other by service name.
+- **Isolation**: the stack is separated from unrelated containers.
+- **Cleaner configuration**: Nginx proxies to `http://simple-app:5000/` instead of using fixed IPs.
+
+## 2. Services
+
+### `nginx`
+- Built from the Week 8 Dockerfile.
+- Exposes port `8080` on the host and port `80` inside the container.
+- Works as the public entry point for the stack.
+- Proxies `/api` requests to `simple-app`.
+- Has its own health check so Compose can detect whether the reverse proxy is actually serving HTTP traffic.
+
+### `simple-app`
+- Built from the Week 8 Python image.
+- Reads configuration from `.env`.
+- Exposes a `/health` endpoint for Compose health checks.
+- Stores the visit counter in Redis so state survives container recreation.
+- Waits for Redis to become healthy before startup.
+
+### `redis`
+- Uses the official `redis:7-alpine` image.
+- Runs with `appendonly yes` so data is written to disk.
+- Mounts the named volume `redis-data` at `/data`.
+- Provides persistence for the visit counter.
+- Exposes a `PING`-based health check used by Compose dependency management.
+
+## 3. Configuration
+
+Runtime configuration is not hardcoded in the image. Instead, Compose injects values from:
+- `docker-compose/.env` for local execution.
+- `docker-compose/.env.example` as the template committed to Git.
+
+Variables used by `simple-app`:
+- `APP_MESSAGE`
+- `PORT`
+- `REDIS_HOST`
+- `REDIS_PORT`
+
+The repository root already ignores `.env`, so local secrets and machine-specific values are not committed.
+
+## 4. Volumes and Persistence
+
+The named volume `redis-data` is the persistent storage of the stack.
+
+It stores:
+- the Redis append-only data files
+- the backend visit counter written by `simple-app`
+
+This means:
+- `docker compose down` stops and removes containers
+- the named volume remains
+- after `docker compose up` again, the visit counter is still there
+
+Important:
+- `docker compose down -v` removes the volume and resets the stored data
+
+## 5. How to Run
+
+From [docker-compose](C:/Users/alvar/OneDrive/Desktop/UNI/3r_Curs/2n_quatri/GSX/Practiques/Practica2-GSX/weeks/week-09-compose/docker-compose):
+
+```bash
+docker compose up -d --build
+```
+
+Check the services:
+
+```bash
+docker compose ps
+docker compose logs --tail=50
+```
+
+## 6. How to Verify
+
+### Reverse proxy communication
+
+```bash
+curl.exe http://localhost:8080/api
+```
+
+Expected result:
+- a response from `simple-app`
+- the message includes the visit counter stored in Redis
+
+### Backend to Redis communication
+
+```bash
+docker compose exec redis redis-cli get visits
+```
+
+Expected result:
+- a numeric counter such as `1`, `2`, `3`, etc.
+
+### Persistence test
+
+1. Start the stack and call `/api` once or twice.
+2. Check the stored value:
+
+```bash
+docker compose exec redis redis-cli get visits
+```
+
+3. Stop the stack without deleting volumes:
+
+```bash
+docker compose down
+```
+
+4. Start it again:
+
 ```bash
 docker compose up -d
 ```
 
-### Verify Orchestration
-```bash
-# Verify both containers are Up
-docker compose ps
+5. Check the counter again:
 
-# Test the Reverse Proxy connection
-curl http://localhost/api
+```bash
+docker compose exec redis redis-cli get visits
 ```
 
----
+If the value is still there, persistence works correctly.
 
-## 4. Continuity from Assignment 1 - Week 6 (Integration)
+## 7. Compose Features Used
 
-In Assignment 1, integrating services required manual configuration of IPs and systemd unit dependencies. Docker Compose automates this:
+- **`depends_on` with health conditions**: `simple-app` waits for `redis`, and `nginx` waits for `simple-app`. This avoids false starts where a container launches before the service it needs is actually ready.
+- **`healthcheck`**: all three services define runtime checks. `nginx` validates local HTTP availability, `simple-app` validates `/health`, and `redis` validates `redis-cli ping`. This gives Compose a real readiness signal instead of relying only on process startup.
+- **`restart: unless-stopped`**: if a service crashes unexpectedly during development, Compose brings it back automatically without requiring manual intervention.
+- **Custom network**: `gsx-network`.
+- **Named volume**: `redis-data`.
+- **Logging limits**: `json-file` with rotation to avoid uncontrolled growth.
 
-| Concept | Assignment 1 (Manual) | Assignment 2 (Compose) |
-|---------|-----------------------|-------------------------|
-| **Service Discovery** | Static IPs in `/etc/hosts` | Internal Docker DNS (service names) |
-| **Dependencies** | Manual start order | `depends_on` instruction |
-| **Network Isolation** | Complex Firewall/VLANs | Isolated `gsx-network` bridge |
+## 8. Deliverables Checklist
+
+- [x] `docker-compose.yml` with 3 services
+- [x] Services communicate by service name
+- [x] Named volume defined for persistence
+- [x] Environment variables used through `.env`
+- [x] `.env.example` provided
+- [x] Architecture diagram documented
+- [x] Local execution verified with `docker compose up`
+- [x] Persistence verified after `docker compose down` / `up`
