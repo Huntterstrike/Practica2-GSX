@@ -11,7 +11,7 @@ services:
     networks:
       - gsx-network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,6 +27,8 @@ services:
       context: ../../week-08-docker/simple-app
     env_file:
       - .env
+    volumes:
+      - app-data:/data
     depends_on:
       redis:
         condition: service_healthy
@@ -70,4 +72,5 @@ networks:
     driver: bridge
 
 volumes:
+  app-data:
   redis-data:
