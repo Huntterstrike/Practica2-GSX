@@ -1,0 +1,27 @@
+services:
+  nginx:
+    build: ../week-08-docker/nginx
+    container_name: nginx-server
+    ports:
+      - "80:80"
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    depends_on:
+      - simple-app
+    networks:
+      - gsx-network
+
+  simple-app:
+    build: ../week-08-docker/simple-app
+    container_name: simple-app
+    restart: always
+    networks:
+      - gsx-network
+
+networks:
+  gsx-network:
+    driver: bridge
