@@ -1,6 +1,7 @@
 FROM nginx:latest
 
-COPY default.conf /etc/nginx/conf.d/default.conf
+COPY --chown=nginx:nginx default.conf /etc/nginx/conf.d/default.conf
+COPY --chown=nginx:nginx index.html /usr/share/nginx/html/index.html
 
 # Fix permissions for non-root nginx user
 RUN chown -R nginx:nginx /var/cache/nginx && \

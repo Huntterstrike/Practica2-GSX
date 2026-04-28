@@ -1,7 +1,7 @@
 services:
   nginx:
     build:
-      context: ../../week-08-docker/nginx
+      context: ./nginx
     ports:
       - "8080:80"
     depends_on:
@@ -24,7 +24,7 @@ services:
 
   simple-app:
     build:
-      context: ../../week-08-docker/simple-app
+      context: ./simple-app
     env_file:
       - .env
     depends_on:

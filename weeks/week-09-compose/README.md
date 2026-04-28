@@ -1,6 +1,6 @@
 # Week 9: Multi-Container Orchestration (Docker Compose)
 
-This week connects the containers from Week 8 into a small multi-service stack managed with Docker Compose. The stack includes:
+This week connects and extends the Week 8 containers into a small multi-service stack managed with Docker Compose. The stack includes:
 - `nginx`: entry point and reverse proxy.
 - `simple-app`: Python backend service.
 - `redis`: persistent data store for the backend visit counter.
@@ -27,14 +27,14 @@ This gives us:
 ## 2. Services
 
 ### `nginx`
-- Built from the Week 8 Dockerfile.
+- Built from a Week 9 Dockerfile that uses the Week 8 `nginx-gsx` image as its base.
 - Exposes port `8080` on the host and port `80` inside the container.
 - Works as the public entry point for the stack.
 - Proxies `/api` requests to `simple-app`.
 - Has its own health check so Compose can detect whether the reverse proxy is actually serving HTTP traffic.
 
 ### `simple-app`
-- Built from the Week 8 Python image.
+- Built from a Week 9 Dockerfile that uses the Week 8 `simple-app-gsx` image as its base.
 - Reads configuration from `.env`.
 - Exposes a `/health` endpoint for Compose health checks.
 - Stores the visit counter in Redis so state survives container recreation.
@@ -79,9 +79,18 @@ Important:
 
 ## 5. How to Run
 
-From [docker-compose](C:/Users/alvar/OneDrive/Desktop/UNI/3r_Curs/2n_quatri/GSX/Practiques/Practica2-GSX/weeks/week-09-compose/docker-compose):
+Prerequisite: build the Week 8 base images first from the repository root:
 
 ```bash
+cd weeks/week-08-docker
+docker build -t nginx-gsx ./nginx
+docker build -t simple-app-gsx ./simple-app
+```
+
+Then run Compose:
+
+```bash
+cd ../week-09-compose/docker-compose
 docker compose up -d --build
 ```
 

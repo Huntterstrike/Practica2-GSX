@@ -2,10 +2,22 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 from urllib.parse import urlparse
 
+import redis
+
 
 HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", "5000"))
-MESSAGE = os.getenv("APP_MESSAGE", "Hello from container")
+MESSAGE = os.getenv("APP_MESSAGE", "Hello from Docker Compose")
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+
+redis_client = redis.Redis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    decode_responses=True,
+    socket_connect_timeout=1,
+    socket_timeout=1,
+)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -21,10 +33,22 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
 
         if path == "/":
-            self._send_text(200, MESSAGE)
+            try:
+                visits = redis_client.incr("visits")
+            except Exception:
+                self._send_text(503, "Redis unavailable")
+                return
+
+            self._send_text(200, f"{MESSAGE} | Visits: {visits}")
             return
 
         if path == "/health":
+            try:
+                redis_client.ping()
+            except Exception:
+                self._send_text(500, "Redis unavailable")
+                return
+
             self._send_text(200, "OK")
             return
 
