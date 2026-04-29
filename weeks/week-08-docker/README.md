@@ -7,7 +7,19 @@ This week packages two independent GreenDevCorp services as Docker images:
 
 The objective is to make both applications reproducible: build the image, run the container, test it locally, push it to Docker Hub, and explain the security and optimization choices.
 
-## 1. Basic Deliverable
+## 1. Architecture
+
+The following diagram shows how the two Week 8 containers are used during local validation. Unlike Week 9 and Week 10, they are tested independently rather than as a connected multi-service stack.
+
+```mermaid
+flowchart LR
+    Client[Browser / curl] --> NginxHost[localhost:8081]
+    Client --> AppHost[localhost:5000]
+    NginxHost --> Nginx[Nginx container :80]
+    AppHost --> App[Simple App container :5000]
+```
+
+## 2. Basic Deliverable
 
 ### Nginx Container
 
@@ -167,7 +179,7 @@ Clean up:
 docker rm -f simple-app-server
 ```
 
-## 2. Docker Hub
+## 3. Docker Hub
 
 Published tags:
 
@@ -207,7 +219,7 @@ curl.exe -sS http://localhost:5000/health
 docker rm -f simple-app-server
 ```
 
-## 3. Intermediate Optimizations
+## 4. Intermediate Optimizations
 
 ### Image Size
 
@@ -253,7 +265,7 @@ Multistage builds were considered but not used because neither image has a build
 
 Using a multistage build here would add complexity without reducing the final runtime content.
 
-## 4. Advanced Security
+## 5. Advanced Security
 
 ### Vulnerability Scanning
 
@@ -353,7 +365,7 @@ docker rm -f nginx-server simple-app-server
 - `--security-opt=no-new-privileges` prevents privilege escalation through setuid or similar mechanisms.
 - Rootless Docker is another hardening option because the Docker daemon and containers run without host root privileges. It improves isolation, but it is an environment-level setup rather than something encoded in this repository.
 
-## 5. Docker Ignore Strategy
+## 6. Docker Ignore Strategy
 
 Each build context has its own `.dockerignore`:
 
@@ -364,7 +376,7 @@ Docker only reads the `.dockerignore` file inside the active build context. For 
 
 The simple app ignores Python cache files, virtual environments, Git metadata, and local placeholder files. The Nginx context ignores Git metadata.
 
-## 6. Deliverables Checklist
+## 7. Deliverables Checklist
 
 ### Basic
 
