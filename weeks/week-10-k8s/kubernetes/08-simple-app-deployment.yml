@@ -12,6 +12,19 @@ spec:
       labels:
         app: simple-app
     spec:
+      initContainers:
+        - name: fix-app-data-permissions
+          image: simple-app-gsx:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - chown -R 100:101 /data && chmod 775 /data
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: app-data
+              mountPath: /data
       containers:
         - name: simple-app
           image: simple-app-gsx:latest

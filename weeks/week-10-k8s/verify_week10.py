@@ -1,9 +1,10 @@
 import subprocess
 import sys
 import time
+import socket
 import urllib.request
 import urllib.error
-from datetime import datetime
+from datetime import datetime, UTC
 
 # =========================
 # CONFIG
@@ -30,12 +31,13 @@ SLEEP_SECONDS = 5
 # =========================
 # HELPERS
 # =========================
-def run(cmd, check=True, capture_output=True):
+def run(cmd, check=True, capture_output=True, timeout=60):
     print(f"$ {' '.join(cmd)}")
     result = subprocess.run(
         cmd,
         text=True,
-        capture_output=capture_output
+        capture_output=capture_output,
+        timeout=timeout
     )
     if check and result.returncode != 0:
         print(result.stdout)
@@ -119,12 +121,55 @@ def http_get(url, timeout=10):
         return response.status, body
 
 
-def get_minikube_service_url(service_name):
-    result = run(["minikube", "service", service_name, "--url"])
-    url = result.stdout.strip().splitlines()[0].strip()
-    if not url:
-        raise RuntimeError(f"Could not get URL for service {service_name}")
-    return url
+def find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def start_port_forward(resource_name, remote_port, timeout=20):
+    local_port = find_free_port()
+    cmd = [
+        "kubectl", "port-forward",
+        resource_name,
+        f"{local_port}:{remote_port}"
+    ]
+    print(f"$ {' '.join(cmd)}")
+
+    process = subprocess.Popen(
+        cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT
+    )
+
+    start = time.time()
+    while time.time() - start < timeout:
+        if process.poll() is not None:
+            output = ""
+            if process.stdout:
+                output = process.stdout.read()
+            raise RuntimeError(
+                f"Port-forward for {resource_name} exited early. Output:\n{output}"
+            )
+
+        try:
+            with socket.create_connection(("127.0.0.1", local_port), timeout=1):
+                return process, f"http://127.0.0.1:{local_port}"
+        except OSError:
+            time.sleep(0.5)
+
+    process.terminate()
+    raise RuntimeError(f"Timed out starting port-forward for {resource_name}")
+
+
+def stop_process(process):
+    if process and process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
 
 
 def exec_in_pod(pod_name, shell_cmd):
@@ -191,50 +236,54 @@ def test_redis_ping():
 
 
 def test_http_endpoints():
-    base_url = get_minikube_service_url(NGINX_SERVICE)
-    info(f"Nginx URL: {base_url}")
-
+    port_forward = None
     all_ok = True
 
     try:
-        status, body = http_get(base_url)
-        if status == 200:
-            ok("Nginx root endpoint returns HTTP 200")
-        else:
-            fail(f"Nginx root endpoint returned HTTP {status}")
-            all_ok = False
-    except Exception as e:
-        fail(f"Nginx root endpoint failed: {e}")
-        all_ok = False
+        port_forward, base_url = start_port_forward(f"service/{NGINX_SERVICE}", 80)
+        info(f"Nginx URL via port-forward: {base_url}")
 
-    api_candidates = [
-        base_url.rstrip("/") + "/api/",
-        base_url.rstrip("/") + "/api",
-    ]
-
-    api_ok = False
-    for api_url in api_candidates:
         try:
-            status, body = http_get(api_url)
+            status, body = http_get(base_url)
             if status == 200:
-                ok(f"Backend reachable through Nginx: {api_url}")
-                print(f"[INFO] Backend response: {body}")
-                api_ok = True
-                break
-        except urllib.error.HTTPError as e:
-            info(f"{api_url} returned HTTP {e.code}")
+                ok("Nginx root endpoint returns HTTP 200")
+            else:
+                fail(f"Nginx root endpoint returned HTTP {status}")
+                all_ok = False
         except Exception as e:
-            info(f"{api_url} failed: {e}")
+            fail(f"Nginx root endpoint failed: {e}")
+            all_ok = False
 
-    if not api_ok:
-        fail("Backend not reachable through Nginx /api")
-        all_ok = False
+        api_candidates = [
+            base_url.rstrip("/") + "/api/",
+            base_url.rstrip("/") + "/api",
+        ]
 
-    return all_ok
+        api_ok = False
+        for api_url in api_candidates:
+            try:
+                status, body = http_get(api_url)
+                if status == 200:
+                    ok(f"Backend reachable through Nginx: {api_url}")
+                    print(f"[INFO] Backend response: {body}")
+                    api_ok = True
+                    break
+            except urllib.error.HTTPError as e:
+                info(f"{api_url} returned HTTP {e.code}")
+            except Exception as e:
+                info(f"{api_url} failed: {e}")
+
+        if not api_ok:
+            fail("Backend not reachable through Nginx /api")
+            all_ok = False
+
+        return all_ok
+    finally:
+        stop_process(port_forward)
 
 
 def test_persistence():
-    marker = f"week10-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    marker = f"week10-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
     app_pod_before = get_pod_name(APP_LABEL)
 
     write_cmd = f"echo {marker} > /data/test.txt && cat /data/test.txt"
