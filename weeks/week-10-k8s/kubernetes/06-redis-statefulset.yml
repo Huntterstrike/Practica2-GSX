@@ -20,7 +20,7 @@ spec:
           args:
             - redis-server
             - --appendonly
-            - yes
+            - "yes"
           ports:
             - containerPort: 6379
               name: redis
