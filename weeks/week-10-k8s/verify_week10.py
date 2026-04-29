@@ -1,3 +1,27 @@
+"""
+Automated verification for Week 10 Kubernetes deliverables.
+
+The script is intentionally split into small helper routines and test blocks so
+it is easy to see which Kubernetes concept each check validates:
+
+- manifest application
+- resource existence
+- workload readiness
+- service exposure and ConfigMap injection
+- in-cluster communication
+- HTTP access through nginx
+- scaling and self-healing
+- persistent storage for both the app volume and Redis StatefulSet
+
+Prerequisites:
+- a running Kubernetes context (typically Minikube)
+- local images already loaded into the cluster when needed
+- kubectl available in PATH
+
+Run with:
+    py -3 verify_week10.py
+"""
+
 import subprocess
 import sys
 import time
@@ -19,6 +43,12 @@ REDIS_STATEFULSET = "redis"
 NGINX_SERVICE = "nginx"
 APP_SERVICE = "simple-app"
 REDIS_SERVICE = "redis"
+REDIS_HEADLESS_SERVICE = "redis-headless"
+
+APP_CONFIGMAP = "simple-app-config"
+NGINX_CONFIGMAP = "nginx-config"
+APP_PV = "app-data-pv"
+APP_PVC = "app-data-pvc"
 
 APP_LABEL = "app=simple-app"
 NGINX_LABEL = "app=nginx"
@@ -32,6 +62,7 @@ SLEEP_SECONDS = 5
 # HELPERS
 # =========================
 def run(cmd, check=True, capture_output=True, timeout=60):
+    """Run a shell command and optionally fail fast if it exits with an error."""
     print(f"$ {' '.join(cmd)}")
     result = subprocess.run(
         cmd,
@@ -59,6 +90,7 @@ def info(msg):
 
 
 def wait_until(condition_fn, description, timeout=TIMEOUT_SECONDS, interval=SLEEP_SECONDS):
+    """Poll a condition until it becomes true or the timeout expires."""
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -73,11 +105,22 @@ def wait_until(condition_fn, description, timeout=TIMEOUT_SECONDS, interval=SLEE
 
 
 def resource_exists(kind, name):
+    """Return True when a named Kubernetes resource exists."""
     result = run(["kubectl", "get", kind, name], check=False)
     return result.returncode == 0
 
 
+def jsonpath_get(kind, name, path, check=True):
+    """Read a single field from a Kubernetes resource using jsonpath."""
+    result = run(
+        ["kubectl", "get", kind, name, "-o", f"jsonpath={path}"],
+        check=check
+    )
+    return result.stdout.strip()
+
+
 def get_pod_name(label_selector):
+    """Return the first pod name that matches the provided label selector."""
     result = run([
         "kubectl", "get", "pods",
         "-l", label_selector,
@@ -89,15 +132,30 @@ def get_pod_name(label_selector):
     return pod_name
 
 
-def deployment_ready(name):
+def get_pod_names(label_selector):
+    """Return every pod name that matches the provided label selector."""
+    result = run([
+        "kubectl", "get", "pods",
+        "-l", label_selector,
+        "-o", "jsonpath={range .items[*]}{.metadata.name}{'\\n'}{end}"
+    ])
+    pod_names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not pod_names:
+        raise RuntimeError(f"No pods found for selector: {label_selector}")
+    return pod_names
+
+
+def deployment_ready(name, expected_replicas=1):
+    """Check whether a Deployment has the expected number of ready replicas."""
     result = run([
         "kubectl", "get", "deployment", name,
         "-o", "jsonpath={.status.readyReplicas}"
     ], check=False)
-    return result.returncode == 0 and result.stdout.strip() == "1"
+    return result.returncode == 0 and result.stdout.strip() == str(expected_replicas)
 
 
 def statefulset_ready(name):
+    """Check whether a StatefulSet has all desired replicas ready."""
     ready = run([
         "kubectl", "get", "statefulset", name,
         "-o", "jsonpath={.status.readyReplicas}"
@@ -116,18 +174,27 @@ def statefulset_ready(name):
 
 
 def http_get(url, timeout=10):
+    """Perform a simple HTTP GET and return the status code and response body."""
     with urllib.request.urlopen(url, timeout=timeout) as response:
         body = response.read().decode("utf-8", errors="replace")
         return response.status, body
 
 
 def find_free_port():
+    """Ask the OS for a free localhost TCP port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
 
 
 def start_port_forward(resource_name, remote_port, timeout=20):
+    """
+    Start `kubectl port-forward` in the background and wait until the local
+    socket becomes reachable.
+
+    This is more reliable than `minikube service --url` on Windows with the
+    Docker driver because that command keeps an interactive tunnel open.
+    """
     local_port = find_free_port()
     cmd = [
         "kubectl", "port-forward",
@@ -164,6 +231,7 @@ def start_port_forward(resource_name, remote_port, timeout=20):
 
 
 def stop_process(process):
+    """Terminate a background process cleanly if it is still running."""
     if process and process.poll() is None:
         process.terminate()
         try:
@@ -173,6 +241,7 @@ def stop_process(process):
 
 
 def exec_in_pod(pod_name, shell_cmd):
+    """Execute a shell command inside a pod and return stdout."""
     result = run([
         "kubectl", "exec", pod_name, "--",
         "sh", "-c", shell_cmd
@@ -180,10 +249,29 @@ def exec_in_pod(pod_name, shell_cmd):
     return result.stdout.strip()
 
 
+def check_equal(description, actual, expected):
+    """Emit a PASS/FAIL line for an equality comparison."""
+    if actual == expected:
+        ok(description)
+        return True
+    fail(f"{description}: expected {expected!r}, got {actual!r}")
+    return False
+
+
+def check_nonempty(description, value):
+    """Emit a PASS/FAIL line for a field that must be present."""
+    if value:
+        ok(description)
+        return True
+    fail(f"{description}: value is empty")
+    return False
+
+
 # =========================
 # TESTS
 # =========================
 def test_apply_manifests():
+    """Apply every manifest so the following checks run against the latest config."""
     if APPLY_MANIFESTS_FIRST:
         info("Applying manifests first...")
         run(["kubectl", "apply", "-f", MANIFESTS_PATH])
@@ -191,6 +279,7 @@ def test_apply_manifests():
 
 
 def test_resources_exist():
+    """Verify that the expected Kubernetes resource objects were created."""
     checks = [
         ("deployment", NGINX_DEPLOYMENT),
         ("deployment", APP_DEPLOYMENT),
@@ -198,6 +287,11 @@ def test_resources_exist():
         ("service", NGINX_SERVICE),
         ("service", APP_SERVICE),
         ("service", REDIS_SERVICE),
+        ("service", REDIS_HEADLESS_SERVICE),
+        ("configmap", APP_CONFIGMAP),
+        ("configmap", NGINX_CONFIGMAP),
+        ("pv", APP_PV),
+        ("pvc", APP_PVC),
     ]
 
     all_ok = True
@@ -211,6 +305,7 @@ def test_resources_exist():
 
 
 def test_workloads_ready():
+    """Wait until Deployments and StatefulSet report ready replicas."""
     all_ok = True
 
     if not wait_until(lambda: deployment_ready(NGINX_DEPLOYMENT), "deployment/nginx ready"):
@@ -225,7 +320,118 @@ def test_workloads_ready():
     return all_ok
 
 
+def test_configuration_and_service_types():
+    """Validate service exposure and the configuration injected through ConfigMaps."""
+    all_ok = True
+
+    all_ok &= check_equal(
+        "service/nginx type is NodePort",
+        jsonpath_get("service", NGINX_SERVICE, "{.spec.type}"),
+        "NodePort"
+    )
+    all_ok &= check_equal(
+        "service/simple-app type is ClusterIP",
+        jsonpath_get("service", APP_SERVICE, "{.spec.type}"),
+        "ClusterIP"
+    )
+    all_ok &= check_equal(
+        "service/redis type is ClusterIP",
+        jsonpath_get("service", REDIS_SERVICE, "{.spec.type}"),
+        "ClusterIP"
+    )
+    all_ok &= check_equal(
+        "service/redis-headless is headless",
+        jsonpath_get("service", REDIS_HEADLESS_SERVICE, "{.spec.clusterIP}"),
+        "None"
+    )
+
+    app_pod = get_pod_name(APP_LABEL)
+    nginx_pod = get_pod_name(NGINX_LABEL)
+
+    all_ok &= check_equal(
+        "simple-app pod receives APP_MESSAGE from ConfigMap",
+        exec_in_pod(app_pod, "printenv APP_MESSAGE"),
+        "Hello from Kubernetes"
+    )
+    all_ok &= check_equal(
+        "simple-app pod receives REDIS_HOST from ConfigMap",
+        exec_in_pod(app_pod, "printenv REDIS_HOST"),
+        "redis"
+    )
+    all_ok &= check_equal(
+        "simple-app pod receives REDIS_PORT from ConfigMap",
+        exec_in_pod(app_pod, "printenv REDIS_PORT"),
+        "6379"
+    )
+
+    nginx_conf = exec_in_pod(nginx_pod, "cat /etc/nginx/conf.d/default.conf")
+    if "proxy_pass http://simple-app:5000/;" in nginx_conf:
+        ok("nginx pod received reverse-proxy ConfigMap")
+    else:
+        fail("nginx pod did not receive the expected reverse-proxy ConfigMap")
+        all_ok = False
+
+    return all_ok
+
+
+def test_probes_and_resources():
+    """Check that probes and CPU/memory requests/limits are present on all workloads."""
+    all_ok = True
+
+    all_ok &= check_equal(
+        "nginx readiness probe path configured",
+        jsonpath_get("deployment", NGINX_DEPLOYMENT, "{.spec.template.spec.containers[0].readinessProbe.httpGet.path}"),
+        "/"
+    )
+    all_ok &= check_equal(
+        "nginx liveness probe path configured",
+        jsonpath_get("deployment", NGINX_DEPLOYMENT, "{.spec.template.spec.containers[0].livenessProbe.httpGet.path}"),
+        "/"
+    )
+    all_ok &= check_equal(
+        "simple-app readiness probe path configured",
+        jsonpath_get("deployment", APP_DEPLOYMENT, "{.spec.template.spec.containers[0].readinessProbe.httpGet.path}"),
+        "/health"
+    )
+    all_ok &= check_equal(
+        "simple-app liveness probe path configured",
+        jsonpath_get("deployment", APP_DEPLOYMENT, "{.spec.template.spec.containers[0].livenessProbe.httpGet.path}"),
+        "/health"
+    )
+    all_ok &= check_equal(
+        "redis readiness probe command configured",
+        jsonpath_get("statefulset", REDIS_STATEFULSET, "{.spec.template.spec.containers[0].readinessProbe.exec.command[0]}"),
+        "redis-cli"
+    )
+    all_ok &= check_equal(
+        "redis liveness probe command configured",
+        jsonpath_get("statefulset", REDIS_STATEFULSET, "{.spec.template.spec.containers[0].livenessProbe.exec.command[0]}"),
+        "redis-cli"
+    )
+
+    resource_checks = [
+        ("nginx CPU request", "deployment", NGINX_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.requests.cpu}"),
+        ("nginx memory request", "deployment", NGINX_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.requests.memory}"),
+        ("nginx CPU limit", "deployment", NGINX_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.limits.cpu}"),
+        ("nginx memory limit", "deployment", NGINX_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.limits.memory}"),
+        ("simple-app CPU request", "deployment", APP_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.requests.cpu}"),
+        ("simple-app memory request", "deployment", APP_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.requests.memory}"),
+        ("simple-app CPU limit", "deployment", APP_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.limits.cpu}"),
+        ("simple-app memory limit", "deployment", APP_DEPLOYMENT, "{.spec.template.spec.containers[0].resources.limits.memory}"),
+        ("redis CPU request", "statefulset", REDIS_STATEFULSET, "{.spec.template.spec.containers[0].resources.requests.cpu}"),
+        ("redis memory request", "statefulset", REDIS_STATEFULSET, "{.spec.template.spec.containers[0].resources.requests.memory}"),
+        ("redis CPU limit", "statefulset", REDIS_STATEFULSET, "{.spec.template.spec.containers[0].resources.limits.cpu}"),
+        ("redis memory limit", "statefulset", REDIS_STATEFULSET, "{.spec.template.spec.containers[0].resources.limits.memory}"),
+    ]
+
+    for description, kind, name, path in resource_checks:
+        all_ok &= check_nonempty(description, jsonpath_get(kind, name, path))
+
+    return all_ok
+
+
 def test_redis_ping():
+    """Confirm that the Redis pod is alive and accepting commands."""
     redis_pod = get_pod_name(REDIS_LABEL)
     output = exec_in_pod(redis_pod, "redis-cli ping")
     if output.strip() == "PONG":
@@ -235,7 +441,36 @@ def test_redis_ping():
     return False
 
 
+def test_in_cluster_connectivity():
+    """Validate service-name communication between the workloads inside the cluster."""
+    all_ok = True
+
+    nginx_pod = get_pod_name(NGINX_LABEL)
+    app_pod = get_pod_name(APP_LABEL)
+
+    nginx_to_app = exec_in_pod(nginx_pod, "curl -fsS http://simple-app:5000/")
+    if nginx_to_app:
+        ok("nginx reaches simple-app through the ClusterIP service")
+        info(f"nginx -> simple-app response: {nginx_to_app}")
+    else:
+        fail("nginx could not reach simple-app through the ClusterIP service")
+        all_ok = False
+
+    app_to_redis = exec_in_pod(
+        app_pod,
+        "python -c 'import socket; s=socket.create_connection((\"redis\", 6379), 5); print(\"OK\"); s.close()'"
+    )
+    all_ok &= check_equal(
+        "simple-app reaches redis through the service name",
+        app_to_redis,
+        "OK"
+    )
+
+    return all_ok
+
+
 def test_http_endpoints():
+    """Expose nginx locally with port-forward and verify external HTTP access."""
     port_forward = None
     all_ok = True
 
@@ -282,7 +517,41 @@ def test_http_endpoints():
         stop_process(port_forward)
 
 
+def test_scaling():
+    """Scale nginx up and back down to prove replica management works."""
+    all_ok = True
+
+    run(["kubectl", "scale", f"deployment/{NGINX_DEPLOYMENT}", "--replicas=3"])
+    if not wait_until(
+        lambda: deployment_ready(NGINX_DEPLOYMENT, expected_replicas=3),
+        "deployment/nginx scaled to 3 replicas"
+    ):
+        all_ok = False
+
+    run(["kubectl", "scale", f"deployment/{NGINX_DEPLOYMENT}", "--replicas=1"])
+    if not wait_until(
+        lambda: deployment_ready(NGINX_DEPLOYMENT, expected_replicas=1),
+        "deployment/nginx scaled back to 1 replica"
+    ):
+        all_ok = False
+
+    return all_ok
+
+
+def test_resilience():
+    """Delete an nginx pod and verify the Deployment recreates it automatically."""
+    old_pod = get_pod_name(NGINX_LABEL)
+    run(["kubectl", "delete", "pod", old_pod])
+
+    recreated = wait_until(
+        lambda: deployment_ready(NGINX_DEPLOYMENT) and get_pod_name(NGINX_LABEL) != old_pod,
+        "deployment/nginx recreates a deleted pod"
+    )
+    return recreated
+
+
 def test_persistence():
+    """Write to the app PVC, restart the Deployment, and verify the data remains."""
     marker = f"week10-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
     app_pod_before = get_pod_name(APP_LABEL)
 
@@ -312,17 +581,46 @@ def test_persistence():
     return False
 
 
+def test_redis_persistence():
+    """Write a Redis key, recreate the Redis pod, and verify the key survives."""
+    marker = f"redis-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    write_output = exec_in_pod("redis-0", f"redis-cli set week10:persistence {marker}")
+    if write_output.strip() != "OK":
+        fail(f"Could not write persistence marker to Redis: {write_output}")
+        return False
+    ok("Redis persistence marker written")
+
+    run(["kubectl", "delete", "pod", "redis-0"])
+    if not wait_until(lambda: statefulset_ready(REDIS_STATEFULSET), "statefulset/redis ready after pod recreation"):
+        return False
+
+    read_output = exec_in_pod("redis-0", "redis-cli get week10:persistence")
+    if read_output.strip() == marker:
+        ok("Redis data survives StatefulSet pod recreation")
+        return True
+
+    fail("Redis data did not survive StatefulSet pod recreation")
+    return False
+
+
 # =========================
 # MAIN
 # =========================
 def main():
+    """Run the verification suite sequentially and summarize the outcome."""
     tests = [
         ("Apply manifests", test_apply_manifests),
         ("Resources exist", test_resources_exist),
         ("Workloads ready", test_workloads_ready),
+        ("Configuration and service types", test_configuration_and_service_types),
+        ("Probes and resources", test_probes_and_resources),
         ("Redis ping", test_redis_ping),
+        ("In-cluster connectivity", test_in_cluster_connectivity),
         ("HTTP endpoints", test_http_endpoints),
+        ("Scaling", test_scaling),
+        ("Resilience", test_resilience),
         ("Persistence", test_persistence),
+        ("Redis persistence", test_redis_persistence),
     ]
 
     passed = 0

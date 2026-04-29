@@ -26,10 +26,12 @@ week-10-kubernetes/
 │   ├── 08-simple-app-deployment.yml
 │   ├── 09-nginx-service.yml
 │   └── 10-nginx-deployment.yml
+├── verify_week10.py
 └── README.md
 ```
 
 The Kubernetes manifests are grouped inside the `kubernetes/` directory.
+The `verify_week10.py` script automates the verification steps that would otherwise require many repeated manual commands.
 
 This structure separates configuration, networking, storage, stateless workloads, and stateful workloads in a clean and readable way.
 
@@ -381,6 +383,135 @@ kubectl exec -it deploy/simple-app -- sh -c "cat /data/test.txt"
 
 If the file is still there, persistence works correctly.
 
+### 10.7 Automated verification script
+
+Because the number of checks in Week 10 is already large, the repository includes an automated verification script:
+
+```bash
+py -3 verify_week10.py
+```
+
+The script is designed as a readable test runner, not as a black box. It is divided into:
+
+- helper routines that execute `kubectl` commands, wait for readiness, read fields with `jsonpath`, run commands inside Pods, and expose `nginx` locally through `kubectl port-forward`
+- test routines that validate one concept at a time and print explicit `[PASS]` or `[FAIL]` lines
+
+The script does **not** depend on `minikube service --url` for HTTP checks. Instead, it uses `kubectl port-forward service/nginx ...` because that is more reliable on Windows with the Docker driver.
+
+### 10.8 What the script validates
+
+A successful run currently contains the following test blocks:
+
+1. `Apply manifests`
+This reapplies every manifest in `kubernetes/` so the verification runs against the latest configuration.
+
+2. `Resources exist`
+This checks that the expected objects were created:
+- `Deployment/nginx`
+- `Deployment/simple-app`
+- `StatefulSet/redis`
+- `Service/nginx`
+- `Service/simple-app`
+- `Service/redis`
+- `Service/redis-headless`
+- `ConfigMap/simple-app-config`
+- `ConfigMap/nginx-config`
+- `PersistentVolume/app-data-pv`
+- `PersistentVolumeClaim/app-data-pvc`
+
+3. `Workloads ready`
+This waits until:
+- `nginx` has ready replicas
+- `simple-app` has ready replicas
+- `redis` has all StatefulSet replicas ready
+
+4. `Configuration and service types`
+This verifies:
+- `nginx` is exposed as `NodePort`
+- `simple-app` and `redis` are `ClusterIP`
+- `redis-headless` is headless
+- the backend Pod really receives `APP_MESSAGE`, `REDIS_HOST`, and `REDIS_PORT` from the ConfigMap
+- the Nginx Pod really receives the reverse-proxy configuration from the ConfigMap
+
+5. `Probes and resources`
+This verifies that:
+- readiness probes are configured
+- liveness probes are configured
+- CPU and memory requests are defined
+- CPU and memory limits are defined
+
+6. `Redis ping`
+This executes `redis-cli ping` inside `redis-0` and expects `PONG`.
+
+7. `In-cluster connectivity`
+This verifies service-name communication inside the cluster:
+- `nginx` reaches `simple-app` through `http://simple-app:5000/`
+- `simple-app` opens a TCP connection to `redis:6379`
+
+8. `HTTP endpoints`
+This exposes `nginx` locally with `kubectl port-forward` and checks:
+- `/` returns HTTP 200
+- `/api/` reaches the backend through the reverse proxy
+
+9. `Scaling`
+This scales `nginx` from 1 replica to 3 replicas and then back to 1 replica, proving that Kubernetes updates the number of Pods automatically.
+
+10. `Resilience`
+This deletes an `nginx` Pod and checks that the Deployment recreates it automatically.
+
+11. `Persistence`
+This writes a marker file into `/data` in `simple-app`, restarts the Deployment, and verifies that the file still exists after the new Pod is ready.
+
+12. `Redis persistence`
+This writes a Redis key, deletes `redis-0`, waits for the StatefulSet Pod to come back, and verifies that the Redis data is still present.
+
+### 10.9 Interpreting the output
+
+A passing run ends with a summary like:
+
+```text
+FINAL SUMMARY
+Passed: 12
+Failed: 0
+```
+
+During the run, each test prints the exact `kubectl` command being executed and a corresponding `[PASS]` line. This makes the script useful both as:
+
+- an automatic regression check
+- a traceable record of how the Week 10 stack was validated
+
+### 10.10 Mapping the script to Week 10 deliverables
+
+The script output provides direct evidence for the checklist items:
+
+#### Core / Basic
+
+- Kubernetes manifests created: validated by `Apply manifests`
+- `nginx`, `simple-app`, and `redis` deployed: validated by `Resources exist` and `Workloads ready`
+- Services communicate by service name: validated by `In-cluster connectivity`
+- `ConfigMap` used for configuration: validated by `Configuration and service types`
+- `Service` resources created: validated by `Resources exist`
+- `Deployment` resources created: validated by `Resources exist`
+- scaling tested: validated by `Scaling`
+- resilience tested: validated by `Resilience`
+
+#### Intermediate
+
+- readiness probes configured: validated by `Probes and resources`
+- liveness probes configured: validated by `Probes and resources`
+- resource requests configured: validated by `Probes and resources`
+- resource limits configured: validated by `Probes and resources`
+- services reachable from outside and through reverse proxy: validated by `HTTP endpoints`
+
+#### Advanced
+
+- persistent storage configured: validated by `Resources exist`, `Persistence`, and `Redis persistence`
+- `PersistentVolume` created: validated by `Resources exist`
+- `PersistentVolumeClaim` created: validated by `Resources exist`
+- `StatefulSet` created for Redis: validated by `Resources exist`
+- StatefulSet data survives Pod recreation: validated by `Redis persistence`
+- application data survives Deployment restart: validated by `Persistence`
+
 ## 11. Useful Commands
 
 Apply manifests:
@@ -430,6 +561,12 @@ Scale a Deployment:
 
 ```bash
 kubectl scale deployment nginx --replicas=3
+```
+
+Run the automated verification:
+
+```bash
+py -3 verify_week10.py
 ```
 
 Delete everything:
@@ -519,6 +656,8 @@ Kubernetes is more appropriate when we need:
 In this project, Kubernetes is the natural next step after Docker Compose because it introduces more complete orchestration concepts.
 
 ## 14. Deliverables Checklist
+
+The checklist below is backed by the automated verification flow described in Section 10.7 through Section 10.10.
 
 ### Basic
 
