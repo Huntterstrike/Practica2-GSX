@@ -604,7 +604,7 @@ docker compose exec nginx nginx -t
 docker compose ps
 ```
 
-If the health check uses `wget`, make sure the Nginx image contains `wget`.
+The current health check uses `curl`, so make sure the Nginx image contains `curl`.
 
 ### Problem: `simple-app` is unhealthy
 
@@ -718,10 +718,10 @@ In this project, Compose is used as the bridge between individual containers fro
 
 ### Final Verification
 
-- [ ] `docker compose up -d --build` tested.
-- [ ] `docker compose ps` shows all services running and healthy.
-- [ ] `curl http://localhost:8080/api` returns backend response.
-- [ ] Redis visit counter verified with `redis-cli get visits`.
-- [ ] Persistence verified after `docker compose down` and `docker compose up -d`.
-- [ ] Logs checked with `docker compose logs`.
-- [ ] Final configuration checked with `docker compose config`.
+- [x] `docker compose up -d --build` tested.
+- [x] `docker compose ps` shows all services running and healthy.
+- [x] `curl http://localhost:8080/api` returns backend response.
+- [x] Redis visit counter verified with `redis-cli get visits`.
+- [x] Persistence verified after `docker compose down` and `docker compose up -d`.
+- [x] Logs checked with `docker compose logs`.
+- [x] Final configuration checked with `docker compose config`.
