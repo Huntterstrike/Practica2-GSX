@@ -1,0 +1,138 @@
+name: week11-ci
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      promote_stable:
+        description: "Also publish the stable tag for both images."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  validate-terraform:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: weeks/week-11-iac/terraform
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialize Terraform without backend
+        run: terraform init -backend=false
+
+      - name: Validate Terraform
+        run: terraform validate
+
+  build-images:
+    runs-on: ubuntu-latest
+    needs: validate-terraform
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nginx
+            context: weeks/week-08-docker/nginx
+            file: weeks/week-08-docker/nginx/Dockerfile
+          - name: simple-app
+            context: .
+            file: weeks/week-11-iac/docker/simple-app.Dockerfile
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=stable,enable=${{ github.event_name == 'workflow_dispatch' && inputs.promote_stable == 'true' }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.name }}.spdx.json
+
+      - name: Save deployable image reference
+        shell: bash
+        run: |
+          printf 'IMAGE_NAME=%s\n' \
+            "${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}" \
+            > image-${{ matrix.name }}.env
+
+      - name: Upload image metadata and SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployable-${{ matrix.name }}-${{ github.sha }}
+          path: |
+            image-${{ matrix.name }}.env
+            sbom-${{ matrix.name }}.spdx.json
