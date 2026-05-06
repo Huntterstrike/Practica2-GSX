@@ -1,0 +1,137 @@
+I0506 11:33:38.098355   19504 log.go:245] (0xc0000f2580) (0xc0001465a0) Create stream
+I0506 11:33:38.211056   19504 log.go:245] (0xc0000f2580) (0xc0001465a0) Stream added, broadcasting: 1
+I0506 11:33:38.219339   19504 log.go:245] (0xc0000f2580) Reply frame received for 1
+I0506 11:33:38.220611   19504 log.go:245] (0xc0001465a0) (1) Writing data frame
+I0506 11:33:38.222090   19504 log.go:245] (0xc0000f2580) (0xc000520000) Create stream
+I0506 11:33:38.223332   19504 log.go:245] (0xc0000f2580) (0xc000520000) Stream added, broadcasting: 3
+I0506 11:33:38.227004   19504 log.go:245] (0xc0000f2580) Reply frame received for 3
+I0506 11:33:38.227539   19504 log.go:245] (0xc000520000) (3) Writing data frame
+I0506 11:33:38.236475   19504 log.go:245] (0xc0000f2580) Data frame received for 1
+I0506 11:33:38.236475   19504 log.go:245] (0xc0001465a0) (1) Data frame handling
+I0506 11:33:38.237005   19504 log.go:245] (0xc0000f2580) (0xc0001465a0) Stream removed, broadcasting: 1
+I0506 11:33:38.237005   19504 log.go:245] (0xc0000f2580) Data frame received for 3
+I0506 11:33:38.237005   19504 log.go:245] (0xc000520000) (3) Data frame handling
+I0506 11:33:38.237538   19504 log.go:245] (0xc0000f2580) (0xc000520000) Stream removed, broadcasting: 3
+I0506 11:33:38.237538   19504 log.go:245] (0xc0000f2580) (0xc000520000) Stream removed, broadcasting: 3
+I0506 11:40:45.497861   19504 log.go:245] (0xc0000f2580) (0xc000520000) Create stream
+I0506 11:40:45.498377   19504 log.go:245] (0xc0000f2580) (0xc000520000) Stream added, broadcasting: 5
+I0506 11:40:45.500449   19504 log.go:245] (0xc0000f2580) Reply frame received for 5
+I0506 11:40:45.500449   19504 log.go:245] (0xc000520000) (5) Writing data frame
+I0506 11:40:45.500968   19504 log.go:245] (0xc0000f2580) (0xc00084a1e0) Create stream
+I0506 11:40:45.500968   19504 log.go:245] (0xc0000f2580) (0xc00084a1e0) Stream added, broadcasting: 7
+I0506 11:40:45.502537   19504 log.go:245] (0xc0000f2580) Reply frame received for 7
+I0506 11:40:45.502537   19504 log.go:245] (0xc00084a1e0) (7) Writing data frame
+I0506 11:40:45.508301   19504 log.go:245] (0xc0000f2580) Data frame received for 7
+I0506 11:40:45.508301   19504 log.go:245] (0xc00084a1e0) (7) Data frame handling
+I0506 11:40:45.508819   19504 log.go:245] (0xc00084a1e0) (7) Data frame sent
+E0506 11:40:45.545993   19504 portforward.go:404] "Unhandled Error" err="error copying from local connection to remote stream: writeto tcp4 127.0.0.1:8080->127.0.0.1:55479: read tcp4 127.0.0.1:8080->127.0.0.1:55479: wsarecv: An existing connection was forcibly closed by the remote host."
+I0506 11:40:45.547031   19504 log.go:245] (0xc00084a1e0) (7) Writing data frame
+I0506 11:40:45.547031   19504 log.go:245] (0xc0000f2580) (0xc00084a1e0) Stream removed, broadcasting: 7
+I0506 11:40:45.549222   19504 log.go:245] (0xc0000f2580) Data frame received for 5
+I0506 11:40:45.549222   19504 log.go:245] (0xc000520000) (5) Data frame handling
+I0506 11:40:45.549222   19504 log.go:245] (0xc0000f2580) (0xc000520000) Stream removed, broadcasting: 5
+I0506 11:40:45.549222   19504 log.go:245] (0xc0000f2580) Data frame received for 7
+I0506 11:40:45.549222   19504 log.go:245] (0xc0000f2580) Data frame gone away for 7
+I0506 11:40:49.373183   19504 log.go:245] (0xc0000f2580) (0xc000146000) Create stream
+I0506 11:40:49.373183   19504 log.go:245] (0xc0000f2580) (0xc000146000) Stream added, broadcasting: 9
+I0506 11:40:49.373183   19504 log.go:245] (0xc0000f2580) Reply frame received for 9
+I0506 11:40:49.373183   19504 log.go:245] (0xc000146000) (9) Writing data frame
+I0506 11:40:49.373183   19504 log.go:245] (0xc0000f2580) (0xc00084a280) Create stream
+I0506 11:40:49.373183   19504 log.go:245] (0xc0000f2580) (0xc00084a280) Stream added, broadcasting: 11
+I0506 11:40:49.373183   19504 log.go:245] (0xc0000f2580) Reply frame received for 11
+I0506 11:40:49.373183   19504 log.go:245] (0xc00084a280) (11) Writing data frame
+I0506 11:40:49.373183   19504 log.go:245] (0xc0000f2580) Data frame received for 11
+I0506 11:40:49.393069   19504 log.go:245] (0xc00084a280) (11) Data frame handling
+I0506 11:40:49.393069   19504 log.go:245] (0xc00084a280) (11) Data frame sent
+E0506 11:40:49.427341   19504 portforward.go:404] "Unhandled Error" err="error copying from local connection to remote stream: writeto tcp4 10.11.48.238:8080->10.11.48.238:55480: read tcp4 10.11.48.238:8080->10.11.48.238:55480: wsarecv: An existing connection was forcibly closed by the remote host."
+I0506 11:40:49.427341   19504 log.go:245] (0xc00084a280) (11) Writing data frame
+I0506 11:40:49.428105   19504 log.go:245] (0xc0000f2580) (0xc00084a280) Stream removed, broadcasting: 11
+I0506 11:40:49.431143   19504 log.go:245] (0xc0000f2580) Data frame received for 9
+I0506 11:40:49.431143   19504 log.go:245] (0xc000146000) (9) Data frame handling
+I0506 11:40:49.431884   19504 log.go:245] (0xc0000f2580) (0xc000146000) Stream removed, broadcasting: 9
+I0506 11:40:49.431884   19504 log.go:245] (0xc0000f2580) Data frame received for 11
+I0506 11:40:49.431884   19504 log.go:245] (0xc0000f2580) Data frame gone away for 11
+I0506 11:40:54.696730   19504 log.go:245] (0xc0000f2580) (0xc000146140) Create stream
+I0506 11:40:54.696730   19504 log.go:245] (0xc0000f2580) (0xc000146140) Stream added, broadcasting: 13
+I0506 11:40:54.699043   19504 log.go:245] (0xc0000f2580) Reply frame received for 13
+I0506 11:40:54.699043   19504 log.go:245] (0xc000146140) (13) Writing data frame
+I0506 11:40:54.699550   19504 log.go:245] (0xc0000f2580) (0xc000146320) Create stream
+I0506 11:40:54.699550   19504 log.go:245] (0xc0000f2580) (0xc000146320) Stream added, broadcasting: 15
+I0506 11:40:54.701141   19504 log.go:245] (0xc0000f2580) Reply frame received for 15
+I0506 11:40:54.701676   19504 log.go:245] (0xc000146320) (15) Writing data frame
+I0506 11:40:54.708551   19504 log.go:245] (0xc0000f2580) Data frame received for 15
+I0506 11:40:54.709600   19504 log.go:245] (0xc000146320) (15) Data frame handling
+I0506 11:40:54.709600   19504 log.go:245] (0xc000146320) (15) Data frame sent
+I0506 11:40:54.712768   19504 log.go:245] (0xc0000f2580) (0xc0001463c0) Create stream
+I0506 11:40:54.713297   19504 log.go:245] (0xc0000f2580) (0xc0001463c0) Stream added, broadcasting: 17
+I0506 11:40:54.714878   19504 log.go:245] (0xc0000f2580) Reply frame received for 17
+I0506 11:40:54.715390   19504 log.go:245] (0xc0001463c0) (17) Writing data frame
+I0506 11:40:54.715390   19504 log.go:245] (0xc0000f2580) (0xc0007a2000) Create stream
+I0506 11:40:54.715390   19504 log.go:245] (0xc0000f2580) (0xc0007a2000) Stream added, broadcasting: 19
+I0506 11:40:54.716978   19504 log.go:245] (0xc0000f2580) Reply frame received for 19
+I0506 11:40:54.717501   19504 log.go:245] (0xc0007a2000) (19) Writing data frame
+I0506 11:40:54.724305   19504 log.go:245] (0xc0000f2580) Data frame received for 19
+I0506 11:40:54.724305   19504 log.go:245] (0xc0007a2000) (19) Data frame handling
+I0506 11:40:54.724828   19504 log.go:245] (0xc0007a2000) (19) Data frame sent
+E0506 11:40:54.741339   19504 portforward.go:404] "Unhandled Error" err="error copying from local connection to remote stream: writeto tcp4 127.0.0.1:8080->127.0.0.1:55483: read tcp4 127.0.0.1:8080->127.0.0.1:55483: wsarecv: An existing connection was forcibly closed by the remote host."
+I0506 11:40:54.741339   19504 log.go:245] (0xc000146320) (15) Writing data frame
+I0506 11:40:54.741844   19504 log.go:245] (0xc0000f2580) (0xc000146320) Stream removed, broadcasting: 15
+I0506 11:40:54.742379   19504 log.go:245] (0xc0000f2580) Data frame received for 13
+I0506 11:40:54.742379   19504 log.go:245] (0xc000146140) (13) Data frame handling
+I0506 11:40:54.742379   19504 log.go:245] (0xc0000f2580) (0xc000146140) Stream removed, broadcasting: 13
+I0506 11:40:54.742379   19504 log.go:245] (0xc0000f2580) Data frame received for 15
+I0506 11:40:54.742379   19504 log.go:245] (0xc0000f2580) Data frame gone away for 15
+E0506 11:40:54.756769   19504 portforward.go:404] "Unhandled Error" err="error copying from local connection to remote stream: writeto tcp4 10.11.48.238:8080->10.11.48.238:55484: read tcp4 10.11.48.238:8080->10.11.48.238:55484: wsarecv: An existing connection was forcibly closed by the remote host."
+I0506 11:40:54.756769   19504 log.go:245] (0xc0007a2000) (19) Writing data frame
+I0506 11:40:54.756769   19504 log.go:245] (0xc0000f2580) (0xc0007a2000) Stream removed, broadcasting: 19
+I0506 11:40:54.761062   19504 log.go:245] (0xc0000f2580) Data frame received for 19
+I0506 11:40:54.761062   19504 log.go:245] (0xc0000f2580) Data frame gone away for 19
+I0506 11:40:54.761580   19504 log.go:245] (0xc0000f2580) Data frame received for 17
+I0506 11:40:54.761580   19504 log.go:245] (0xc0001463c0) (17) Data frame handling
+I0506 11:40:54.762113   19504 log.go:245] (0xc0000f2580) (0xc0001463c0) Stream removed, broadcasting: 17
+I0506 11:45:59.220504   19504 log.go:245] (0xc0000f2580) (0xc00084a1e0) Create stream
+I0506 11:45:59.221029   19504 log.go:245] (0xc0000f2580) (0xc00084a1e0) Stream added, broadcasting: 21
+I0506 11:45:59.228614   19504 log.go:245] (0xc0000f2580) Reply frame received for 21
+I0506 11:45:59.229120   19504 log.go:245] (0xc00084a1e0) (21) Writing data frame
+I0506 11:45:59.229120   19504 log.go:245] (0xc0000f2580) (0xc00084a280) Create stream
+I0506 11:45:59.229662   19504 log.go:245] (0xc0000f2580) (0xc00084a280) Stream added, broadcasting: 23
+I0506 11:45:59.231272   19504 log.go:245] (0xc0000f2580) Reply frame received for 23
+I0506 11:45:59.231272   19504 log.go:245] (0xc00084a280) (23) Writing data frame
+I0506 11:45:59.237682   19504 log.go:245] (0xc0000f2580) Data frame received for 23
+I0506 11:45:59.238197   19504 log.go:245] (0xc00084a280) (23) Data frame handling
+I0506 11:45:59.238197   19504 log.go:245] (0xc00084a280) (23) Data frame sent
+I0506 11:45:59.265962   19504 log.go:245] (0xc00084a280) (23) Writing data frame
+I0506 11:45:59.269745   19504 log.go:245] (0xc0000f2580) Data frame received for 23
+I0506 11:45:59.270459   19504 log.go:245] (0xc00084a280) (23) Data frame handling
+I0506 11:45:59.270459   19504 log.go:245] (0xc00084a280) (23) Data frame sent
+E0506 11:45:59.300013   19504 portforward.go:404] "Unhandled Error" err="error copying from local connection to remote stream: writeto tcp4 10.11.48.238:8080->10.11.48.238:59818: read tcp4 10.11.48.238:8080->10.11.48.238:59818: wsarecv: An existing connection was forcibly closed by the remote host."
+I0506 11:45:59.300528   19504 log.go:245] (0xc00084a280) (23) Writing data frame
+I0506 11:45:59.300528   19504 log.go:245] (0xc0000f2580) (0xc00084a280) Stream removed, broadcasting: 23
+I0506 11:45:59.303105   19504 log.go:245] (0xc0000f2580) Data frame received for 21
+I0506 11:45:59.303105   19504 log.go:245] (0xc00084a1e0) (21) Data frame handling
+I0506 11:45:59.303773   19504 log.go:245] (0xc0000f2580) (0xc00084a1e0) Stream removed, broadcasting: 21
+I0506 11:45:59.303773   19504 log.go:245] (0xc0000f2580) Data frame received for 23
+I0506 11:45:59.303773   19504 log.go:245] (0xc0000f2580) Data frame gone away for 23
+I0506 11:46:32.562964   19504 log.go:245] (0xc0000f2580) (0xc000146000) Create stream
+I0506 11:46:32.563486   19504 log.go:245] (0xc0000f2580) (0xc000146000) Stream added, broadcasting: 25
+I0506 11:46:32.565328   19504 log.go:245] (0xc0000f2580) Reply frame received for 25
+I0506 11:46:32.565328   19504 log.go:245] (0xc000146000) (25) Writing data frame
+I0506 11:46:32.565834   19504 log.go:245] (0xc0000f2580) (0xc00084a320) Create stream
+I0506 11:46:32.565834   19504 log.go:245] (0xc0000f2580) (0xc00084a320) Stream added, broadcasting: 27
+I0506 11:46:32.567442   19504 log.go:245] (0xc0000f2580) Reply frame received for 27
+I0506 11:46:32.567975   19504 log.go:245] (0xc00084a320) (27) Writing data frame
+I0506 11:46:32.573328   19504 log.go:245] (0xc0000f2580) Data frame received for 27
+I0506 11:46:32.573328   19504 log.go:245] (0xc00084a320) (27) Data frame handling
+I0506 11:46:32.573328   19504 log.go:245] (0xc00084a320) (27) Data frame sent
+I0506 11:46:32.592521   19504 log.go:245] (0xc00084a320) (27) Writing data frame
+I0506 11:46:32.596587   19504 log.go:245] (0xc0000f2580) Data frame received for 27
+I0506 11:46:32.597714   19504 log.go:245] (0xc00084a320) (27) Data frame handling
+I0506 11:46:32.597714   19504 log.go:245] (0xc00084a320) (27) Data frame sent
+E0506 11:46:32.622094   19504 portforward.go:404] "Unhandled Error" err="error copying from local connection to remote stream: writeto tcp4 10.11.48.238:8080->10.11.48.238:59824: read tcp4 10.11.48.238:8080->10.11.48.238:59824: wsarecv: An existing connection was forcibly closed by the remote host."
+I0506 11:46:32.622094   19504 log.go:245] (0xc00084a320) (27) Writing data frame
+I0506 11:46:32.622094   19504 log.go:245] (0xc0000f2580) (0xc00084a320) Stream removed, broadcasting: 27
+I0506 11:46:32.624659   19504 log.go:245] (0xc0000f2580) Data frame received for 25
+I0506 11:46:32.624659   19504 log.go:245] (0xc000146000) (25) Data frame handling
+I0506 11:46:32.624659   19504 log.go:245] (0xc0000f2580) (0xc000146000) Stream removed, broadcasting: 25
+I0506 11:46:32.625165   19504 log.go:245] (0xc0000f2580) Data frame received for 27
+I0506 11:46:32.625165   19504 log.go:245] (0xc0000f2580) Data frame gone away for 27
