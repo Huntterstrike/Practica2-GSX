@@ -403,67 +403,94 @@ The script does **not** depend on `minikube service --url` for HTTP checks. Inst
 A successful run currently contains the following test blocks:
 
 1. `Apply manifests`
-This reapplies every manifest in `kubernetes/` so the verification runs against the latest configuration.
+
+   This reapplies every manifest in `kubernetes/` so the verification runs
+   against the latest configuration.
 
 2. `Resources exist`
-This checks that the expected objects were created:
-- `Deployment/nginx`
-- `Deployment/simple-app`
-- `StatefulSet/redis`
-- `Service/nginx`
-- `Service/simple-app`
-- `Service/redis`
-- `Service/redis-headless`
-- `ConfigMap/simple-app-config`
-- `ConfigMap/nginx-config`
-- `PersistentVolume/app-data-pv`
-- `PersistentVolumeClaim/app-data-pvc`
+
+   This checks that the expected objects were created:
+
+   - `Deployment/nginx`
+   - `Deployment/simple-app`
+   - `StatefulSet/redis`
+   - `Service/nginx`
+   - `Service/simple-app`
+   - `Service/redis`
+   - `Service/redis-headless`
+   - `ConfigMap/simple-app-config`
+   - `ConfigMap/nginx-config`
+   - `PersistentVolume/app-data-pv`
+   - `PersistentVolumeClaim/app-data-pvc`
 
 3. `Workloads ready`
-This waits until:
-- `nginx` has ready replicas
-- `simple-app` has ready replicas
-- `redis` has all StatefulSet replicas ready
+
+   This waits until:
+
+   - `nginx` has ready replicas
+   - `simple-app` has ready replicas
+   - `redis` has all StatefulSet replicas ready
 
 4. `Configuration and service types`
-This verifies:
-- `nginx` is exposed as `NodePort`
-- `simple-app` and `redis` are `ClusterIP`
-- `redis-headless` is headless
-- the backend Pod really receives `APP_MESSAGE`, `REDIS_HOST`, and `REDIS_PORT` from the ConfigMap
-- the Nginx Pod really receives the reverse-proxy configuration from the ConfigMap
+
+   This verifies:
+
+   - `nginx` is exposed as `NodePort`
+   - `simple-app` and `redis` are `ClusterIP`
+   - `redis-headless` is headless
+   - the backend Pod really receives `APP_MESSAGE`, `REDIS_HOST`, and
+     `REDIS_PORT` from the ConfigMap
+   - the Nginx Pod really receives the reverse-proxy configuration from
+     the ConfigMap
 
 5. `Probes and resources`
-This verifies that:
-- readiness probes are configured
-- liveness probes are configured
-- CPU and memory requests are defined
-- CPU and memory limits are defined
+
+   This verifies that:
+
+   - readiness probes are configured
+   - liveness probes are configured
+   - CPU and memory requests are defined
+   - CPU and memory limits are defined
 
 6. `Redis ping`
-This executes `redis-cli ping` inside `redis-0` and expects `PONG`.
+
+   This executes `redis-cli ping` inside `redis-0` and expects `PONG`.
 
 7. `In-cluster connectivity`
-This verifies service-name communication inside the cluster:
-- `nginx` reaches `simple-app` through `http://simple-app:5000/`
-- `simple-app` opens a TCP connection to `redis:6379`
+
+   This verifies service-name communication inside the cluster:
+
+   - `nginx` reaches `simple-app` through `http://simple-app:5000/`
+   - `simple-app` opens a TCP connection to `redis:6379`
 
 8. `HTTP endpoints`
-This exposes `nginx` locally with `kubectl port-forward` and checks:
-- `/` returns HTTP 200
-- `/api/` reaches the backend through the reverse proxy
+
+   This exposes `nginx` locally with `kubectl port-forward` and checks:
+
+   - `/` returns HTTP 200
+   - `/api/` reaches the backend through the reverse proxy
 
 9. `Scaling`
-This scales `nginx` from 1 replica to 3 replicas and then back to 1 replica, proving that Kubernetes updates the number of Pods automatically.
+
+   This scales `nginx` from 1 replica to 3 replicas and then back to 1
+   replica, proving that Kubernetes updates the number of Pods
+   automatically.
 
 10. `Resilience`
-This deletes an `nginx` Pod and checks that the Deployment recreates it automatically.
+
+    This deletes an `nginx` Pod and checks that the Deployment recreates
+    it automatically.
 
 11. `Persistence`
-This writes a marker file into `/data` in `simple-app`, restarts the Deployment, and verifies that the file still exists after the new Pod is ready.
+
+    This writes a marker file into `/data` in `simple-app`, restarts the
+    Deployment, and verifies that the file still exists after the new Pod
+    is ready.
 
 12. `Redis persistence`
-This writes a Redis key, deletes `redis-0`, waits for the StatefulSet Pod to come back, and verifies that the Redis data is still present.
+
+    This writes a Redis key, deletes `redis-0`, waits for the StatefulSet
+    Pod to come back, and verifies that the Redis data is still present.
 
 ### 10.9 Interpreting the output
 
@@ -526,7 +553,7 @@ The checklist below is backed by the automated verification flow described in Se
 - [x] `Deployment` resources created.
 - [x] Architecture documented.
 
-### Intermediate
+### Intermediate Checklist
 
 - [x] Readiness probes configured.
 - [x] Liveness probes configured.
@@ -534,7 +561,7 @@ The checklist below is backed by the automated verification flow described in Se
 - [x] Resource limits configured.
 - [x] Reliability and health checks documented.
 
-### Advanced
+### Advanced Checklist
 
 - [x] Persistent storage configured.
 - [x] `PersistentVolume` created.

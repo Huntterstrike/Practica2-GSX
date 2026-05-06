@@ -342,11 +342,11 @@ Resource limits are important because they prevent one container from consuming 
 
 The chosen values are intentionally small because this is a local development stack.
 
-| Service | CPU Reservation | CPU Limit | Memory Reservation | Memory Limit | Reasoning |
-|---|---:|---:|---:|---:|---|
-| `nginx` | `0.10` | `0.25` | `64M` | `128M` | Nginx only acts as a lightweight reverse proxy. |
-| `simple-app` | `0.20` | `0.50` | `128M` | `256M` | The backend receives more resources because it runs the application logic. |
-| `redis` | `0.10` | `0.25` | `64M` | `128M` | Redis only stores a small visit counter in this demo. |
+| Service      | CPU Reservation | CPU Limit | Memory Reservation | Memory Limit | Reasoning                                                     |
+| ------------ | --------------: | --------: | -----------------: | -----------: | ------------------------------------------------------------- |
+| `nginx`      |          `0.10` |    `0.25` |              `64M` |       `128M` | Nginx only acts as a lightweight reverse proxy.               |
+| `simple-app` |          `0.20` |    `0.50` |             `128M` |       `256M` | The backend receives more resources because it runs the application logic. |
+| `redis`      |          `0.10` |    `0.25` |              `64M` |       `128M` | Redis only stores a small visit counter in this demo.         |
 
 The limits make the stack safer and more predictable during local execution.
 
@@ -475,32 +475,32 @@ This verifies Docker Compose service discovery inside the custom network.
 docker compose up -d --build
 ```
 
-2. Call the application several times:
+1. Call the application several times:
 
 ```bash
 curl http://localhost:8080/api
 curl http://localhost:8080/api
 ```
 
-3. Check the stored value:
+1. Check the stored value:
 
 ```bash
 docker compose exec redis redis-cli get visits
 ```
 
-4. Stop the stack without deleting volumes:
+1. Stop the stack without deleting volumes:
 
 ```bash
 docker compose down
 ```
 
-5. Start it again:
+1. Start it again:
 
 ```bash
 docker compose up -d
 ```
 
-6. Check the counter again:
+1. Check the counter again:
 
 ```bash
 docker compose exec redis redis-cli get visits

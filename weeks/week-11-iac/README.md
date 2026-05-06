@@ -441,56 +441,73 @@ The script is not a black box. It prints every command it executes and reports e
 A successful run currently contains these test blocks:
 
 1. `Prerequisites`
-- checks that `terraform`, `kubectl`, `minikube`, and `docker` are available
-- confirms that the active Kubernetes context is `minikube`
+
+   - checks that `terraform`, `kubectl`, `minikube`, and `docker` are
+     available
+   - confirms that the active Kubernetes context is `minikube`
 
 2. `Build images`
-- builds the `nginx` image locally
-- builds the `simple-app` image locally
-- builds both images inside Minikube
+
+   - builds the `nginx` image locally
+   - builds the `simple-app` image locally
+   - builds both images inside Minikube
 
 3. `Terraform validation`
-- runs `terraform fmt -check -recursive`
-- runs `terraform init -backend=false`
-- runs `terraform validate`
+
+   - runs `terraform fmt -check -recursive`
+   - runs `terraform init -backend=false`
+   - runs `terraform validate`
 
 4. `Deploy dev from scratch`
-- selects the `dev` workspace
-- destroys any previous `dev` deployment
-- reapplies the full stack from Terraform
+
+   - selects the `dev` workspace
+   - destroys any previous `dev` deployment
+   - reapplies the full stack from Terraform
 
 5. `Verify dev environment`
-- checks Terraform outputs
-- verifies the existence of namespace, PV, PVC, ConfigMaps, Services, Deployments, and StatefulSet
-- waits for `nginx`, `simple-app`, and `redis` to become ready
-- checks that service types and NodePort values match the Terraform config
-- verifies backend environment variables and Nginx reverse-proxy config
-- checks readiness probes, liveness probes, resource requests, and resource limits
-- verifies Redis ping
-- verifies in-cluster connectivity
-- verifies external HTTP access through Nginx using `kubectl port-forward`
-- tests scaling
-- tests self-healing
-- tests backend persistence
-- tests Redis persistence
-- checks `terraform plan -detailed-exitcode` for idempotence
-- applies a temporary configuration change and verifies rollback
+
+   - checks Terraform outputs
+   - verifies the existence of namespace, PV, PVC, ConfigMaps, Services,
+     Deployments, and StatefulSet
+   - waits for `nginx`, `simple-app`, and `redis` to become ready
+   - checks that service types and NodePort values match the Terraform
+     config
+   - verifies backend environment variables and Nginx reverse-proxy config
+   - checks readiness probes, liveness probes, resource requests, and
+     resource limits
+   - verifies Redis ping
+   - verifies in-cluster connectivity
+   - verifies external HTTP access through Nginx using
+     `kubectl port-forward`
+   - tests scaling
+   - tests self-healing
+   - tests backend persistence
+   - tests Redis persistence
+   - checks `terraform plan -detailed-exitcode` for idempotence
+   - applies a temporary configuration change and verifies rollback
 
 6. `Deploy staging from scratch`
-- repeats the same Terraform recreation flow in the `staging` workspace
+
+   - repeats the same Terraform recreation flow in the `staging`
+     workspace
 
 7. `Verify staging environment`
-- confirms `staging` works independently from `dev`
-- verifies the `staging` message, namespace, Service exposure, and idempotence
+
+   - confirms `staging` works independently from `dev`
+   - verifies the `staging` message, namespace, Service exposure, and
+     idempotence
 
 8. `Multiple environments`
-- proves that `dev` and `staging` coexist from the same codebase
+
+   - proves that `dev` and `staging` coexist from the same codebase
 
 9. `CI workflow static checks`
-- verifies that the GitHub Actions workflow includes Terraform validation
-- verifies image build and push logic
-- verifies SHA and stable tag logic
-- verifies cache, Trivy, SARIF upload, and SBOM steps
+
+   - verifies that the GitHub Actions workflow includes Terraform
+     validation
+   - verifies image build and push logic
+   - verifies SHA and stable tag logic
+   - verifies cache, Trivy, SARIF upload, and SBOM steps
 
 ### 9.4 Why the Script Uses Port-Forward
 
