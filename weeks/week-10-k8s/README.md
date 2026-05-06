@@ -338,7 +338,102 @@ minikube service nginx --url
 
 Then call the returned URL in the browser or with curl.
 
-### 10.4 Verify backend communication
+This confirms that the `nginx` Service is reachable from the host machine.
+
+In this project the `nginx` Service is still defined as `NodePort`, which is the correct Kubernetes concept to learn and validate. However, with Minikube running through the Docker driver on Windows, the Minikube node lives inside a private Docker network. That means the `NodePort` exists inside Kubernetes, but it is not always directly reachable from another laptop on the same Wi-Fi network.
+
+For that reason, the most reliable way to access the application from the host is:
+
+```bash
+kubectl port-forward service/nginx 8080:80
+```
+
+Then open:
+
+- `http://127.0.0.1:8080/`
+- `http://127.0.0.1:8080/api/`
+
+### 10.4 Access from another laptop on the same Wi-Fi
+
+To demonstrate real external access from another machine, we exposed the Kubernetes Service through the Windows host itself.
+
+The idea is:
+
+- the other laptop connects to the Windows host IP and port `8080`
+- the Windows host forwards that traffic into Kubernetes with `kubectl port-forward`
+- Kubernetes sends the traffic to `service/nginx`
+- `nginx` proxies `/api/` to `simple-app`
+
+This approach does not replace the Kubernetes architecture. It only changes how the cluster is exposed to the local network in a Minikube-on-Windows environment.
+
+Use `PowerShell`, not Git Bash, for the following commands.
+
+1. Prepare the cluster in a normal PowerShell window:
+
+   ```powershell
+   cd "C:\Users\alvar\OneDrive\Desktop\UNI\3r_Curs\2n_quatri\GSX\Practiques\Practica2-GSX\weeks\week-10-k8s"
+   minikube start
+   kubectl config current-context
+   kubectl apply -f kubernetes
+   kubectl rollout status deployment/simple-app --timeout=120s
+   kubectl rollout status statefulset/redis --timeout=120s
+   kubectl rollout restart deployment/nginx
+   kubectl rollout status deployment/nginx --timeout=180s
+   kubectl get pods
+   ```
+
+2. Open the Windows firewall in an administrator PowerShell window:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Private" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080 -Profile Private
+   New-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Public" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080 -Profile Public
+   ```
+
+3. Publish the service to the LAN in a normal PowerShell window and keep it open:
+
+   ```powershell
+   kubectl port-forward --address 0.0.0.0 service/nginx 8080:80
+   ```
+
+4. Verify locally from the host:
+
+   ```powershell
+   ipconfig
+   Invoke-WebRequest http://127.0.0.1:8080/ -UseBasicParsing
+   Invoke-WebRequest http://127.0.0.1:8080/api/ -UseBasicParsing
+   ```
+
+5. From another laptop on the same Wi-Fi, open:
+
+   ```text
+   http://<HOST_WIFI_IP>:8080/
+   http://<HOST_WIFI_IP>:8080/api/
+   ```
+
+Example from our test:
+
+```text
+http://10.11.48.238:8080/
+http://10.11.48.238:8080/api/
+```
+
+This proves that:
+
+- the host can reach the Kubernetes Service
+- the service is published to the LAN
+- the reverse proxy path `/api/` works from another machine
+
+To stop the demonstration:
+
+- press `Ctrl + C` in the terminal running `kubectl port-forward`
+- optionally remove the firewall rules:
+
+```powershell
+Remove-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Private"
+Remove-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Public"
+```
+
+### 10.5 Verify backend communication
 
 ```bash
 kubectl exec -it deploy/nginx -- sh
@@ -347,7 +442,7 @@ wget -qO- http://simple-app:5000/
 
 This verifies that Nginx can reach the backend through the Service.
 
-### 10.5 Verify Redis communication
+### 10.6 Verify Redis communication
 
 ```bash
 kubectl exec -it redis-0 -- redis-cli ping
@@ -361,7 +456,7 @@ PONG
 
 This verifies that Redis is running correctly.
 
-### 10.6 Verify persistence
+### 10.7 Verify persistence
 
 Write a file inside the backend persistent volume:
 
@@ -383,7 +478,7 @@ kubectl exec -it deploy/simple-app -- sh -c "cat /data/test.txt"
 
 If the file is still there, persistence works correctly.
 
-### 10.7 Automated verification script
+### 10.8 Automated verification script
 
 Because the number of checks in Week 10 is already large, the repository includes an automated verification script:
 
@@ -398,7 +493,9 @@ The script is designed as a readable test runner, not as a black box. It is divi
 
 The script does **not** depend on `minikube service --url` for HTTP checks. Instead, it uses `kubectl port-forward service/nginx ...` because that is more reliable on Windows with the Docker driver.
 
-### 10.8 What the script validates
+The script validates access from the local host. The additional LAN-access demonstration from Section `10.4` is manual because it also depends on host networking and Windows firewall configuration, which are outside Kubernetes itself.
+
+### 10.9 What the script validates
 
 A successful run currently contains the following test blocks:
 
@@ -492,7 +589,7 @@ A successful run currently contains the following test blocks:
     This writes a Redis key, deletes `redis-0`, waits for the StatefulSet
     Pod to come back, and verifies that the Redis data is still present.
 
-### 10.9 Interpreting the output
+### 10.10 Interpreting the output
 
 A passing run ends with a summary like:
 
@@ -507,7 +604,7 @@ During the run, each test prints the exact `kubectl` command being executed and 
 - an automatic regression check
 - a traceable record of how the Week 10 stack was validated
 
-### 10.10 Mapping the script to Week 10 deliverables
+### 10.11 Mapping the script to Week 10 deliverables
 
 The script output provides direct evidence for the checklist items:
 
@@ -539,9 +636,50 @@ The script output provides direct evidence for the checklist items:
 - StatefulSet data survives Pod recreation: validated by `Redis persistence`
 - application data survives Deployment restart: validated by `Persistence`
 
+### 10.12 LAN Demo Cheat Sheet
+
+Use this short sequence in `PowerShell` when you want to repeat the external-access demonstration quickly.
+
+1. Normal PowerShell:
+
+   ```powershell
+   cd "C:\Users\alvar\OneDrive\Desktop\UNI\3r_Curs\2n_quatri\GSX\Practiques\Practica2-GSX\weeks\week-10-k8s"
+   minikube start
+   kubectl apply -f kubernetes
+   kubectl rollout status deployment/simple-app --timeout=120s
+   kubectl rollout status statefulset/redis --timeout=120s
+   kubectl rollout restart deployment/nginx
+   kubectl rollout status deployment/nginx --timeout=180s
+   kubectl port-forward --address 0.0.0.0 service/nginx 8080:80
+   ```
+
+2. Administrator PowerShell:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Private" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080 -Profile Private
+   New-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Public" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080 -Profile Public
+   ```
+
+3. Other laptop:
+
+   ```text
+   http://<HOST_WIFI_IP>:8080/
+   http://<HOST_WIFI_IP>:8080/api/
+   ```
+
+4. Cleanup:
+
+   - stop `kubectl port-forward` with `Ctrl + C`
+   - remove the temporary firewall rules if needed
+
+   ```powershell
+   Remove-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Private"
+   Remove-NetFirewallRule -DisplayName "Week10 Nginx LAN 8080 Public"
+   ```
+
 ## 11. Deliverables Checklist
 
-The checklist below is backed by the automated verification flow described in Section 10.7 through Section 10.10.
+The checklist below is backed by the automated verification flow described in Section 10.8 through Section 10.11.
 
 ### Basic
 
