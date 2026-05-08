@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    paths:
+      - .github/workflows/ci.yml
+      - weeks/week-08-docker/nginx/**
+      - weeks/week-09-compose/docker-compose/simple-app/app.py
+      - weeks/week-09-compose/docker-compose/simple-app/requirements.txt
+      - weeks/week-11-iac/docker/simple-app.Dockerfile
+      - weeks/week-11-iac/terraform/**
   workflow_dispatch:
     inputs:
       promote_stable:
