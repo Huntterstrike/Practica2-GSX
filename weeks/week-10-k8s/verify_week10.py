@@ -29,12 +29,14 @@ import socket
 import urllib.request
 import urllib.error
 from datetime import datetime, UTC
+from pathlib import Path
 
 # =========================
 # CONFIG
 # =========================
 APPLY_MANIFESTS_FIRST = True
-MANIFESTS_PATH = "kubernetes"
+SCRIPT_DIR = Path(__file__).resolve().parent
+MANIFESTS_PATH = SCRIPT_DIR / "kubernetes"
 
 NGINX_DEPLOYMENT = "nginx"
 APP_DEPLOYMENT = "simple-app"
@@ -63,6 +65,7 @@ SLEEP_SECONDS = 5
 # =========================
 def run(cmd, check=True, capture_output=True, timeout=60):
     """Run a shell command and optionally fail fast if it exits with an error."""
+    cmd = [str(part) for part in cmd]
     print(f"$ {' '.join(cmd)}")
     result = subprocess.run(
         cmd,
@@ -87,6 +90,20 @@ def fail(msg):
 
 def info(msg):
     print(f"[INFO] {msg}")
+
+
+def cluster_accessible():
+    """Return True when the current kubectl context can reach the API server."""
+    result = run(["kubectl", "cluster-info"], check=False, timeout=20)
+    return result.returncode == 0
+
+
+def current_context():
+    """Return the active kubectl context name when available."""
+    result = run(["kubectl", "config", "current-context"], check=False, timeout=20)
+    if result.returncode != 0:
+        return "<unknown>"
+    return result.stdout.strip() or "<unknown>"
 
 
 def wait_until(condition_fn, description, timeout=TIMEOUT_SECONDS, interval=SLEEP_SECONDS):
@@ -270,6 +287,19 @@ def check_nonempty(description, value):
 # =========================
 # TESTS
 # =========================
+def test_cluster_reachable():
+    """Fail fast when the current kubectl context cannot reach the API server."""
+    context = current_context()
+    if cluster_accessible():
+        ok(f"Kubernetes API reachable (context: {context})")
+        return True
+
+    raise RuntimeError(
+        f"Kubernetes API is not reachable for context '{context}'. "
+        "Start the cluster first (for Minikube: 'minikube start') and verify with 'kubectl cluster-info'."
+    )
+
+
 def test_apply_manifests():
     """Apply every manifest so the following checks run against the latest config."""
     if APPLY_MANIFESTS_FIRST:
@@ -609,6 +639,7 @@ def test_redis_persistence():
 def main():
     """Run the verification suite sequentially and summarize the outcome."""
     tests = [
+        ("Cluster reachable", test_cluster_reachable),
         ("Apply manifests", test_apply_manifests),
         ("Resources exist", test_resources_exist),
         ("Workloads ready", test_workloads_ready),
@@ -625,6 +656,7 @@ def main():
 
     passed = 0
     failed = 0
+    critical_tests = {"Cluster reachable", "Apply manifests"}
 
     for name, fn in tests:
         print("\n" + "=" * 60)
@@ -635,11 +667,17 @@ def main():
             result = fn()
             if result is False:
                 failed += 1
+                if name in critical_tests:
+                    info(f"Stopping after critical test failure: {name}")
+                    break
             else:
                 passed += 1
         except Exception as e:
             fail(f"{name} crashed: {e}")
             failed += 1
+            if name in critical_tests:
+                info(f"Stopping after critical test failure: {name}")
+                break
 
     print("\n" + "=" * 60)
     print("FINAL SUMMARY")

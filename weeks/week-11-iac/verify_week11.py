@@ -110,6 +110,37 @@ def info(message: str) -> None:
     print(f"[INFO] {message}")
 
 
+def current_context() -> str:
+    """Return the active kubectl context name when available."""
+    result = run(["kubectl", "config", "current-context"], check=False, timeout=20)
+    if result.returncode != 0:
+        return "<unknown>"
+    return result.stdout.strip() or "<unknown>"
+
+
+def cluster_accessible() -> bool:
+    """Return True when kubectl can reach the active Kubernetes API server."""
+    result = run(["kubectl", "cluster-info"], check=False, timeout=20)
+    return result.returncode == 0
+
+
+def minikube_running() -> bool:
+    """Return True when the Minikube control plane reports a running state."""
+    result = run(["minikube", "status"], check=False, timeout=20)
+    status_output = f"{result.stdout}\n{result.stderr}"
+    return (
+        result.returncode == 0
+        and "host: Running" in status_output
+        and "apiserver: Running" in status_output
+    )
+
+
+def docker_daemon_accessible() -> bool:
+    """Return True when the Docker daemon answers server-side API requests."""
+    result = run(["docker", "version", "--format", "{{.Server.Version}}"], check=False, timeout=20)
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def wait_until(condition_fn, description: str, timeout: int = TIMEOUT_SECONDS, interval: int = SLEEP_SECONDS) -> bool:
     """Poll a condition until it becomes true or timeout expires."""
     start = time.time()
@@ -314,7 +345,7 @@ def ensure_workspace(name: str) -> None:
 
 def terraform_apply(var_file: Path, extra_vars: list[str] | None = None) -> None:
     """Apply the Terraform stack for the selected workspace."""
-    cmd = ["apply", f"-var-file={var_file}", "-auto-approve"]
+    cmd = ["apply", "-var-file", str(var_file), "-auto-approve"]
     if extra_vars:
         cmd.extend(extra_vars)
     terraform_cmd(*cmd, timeout=300)
@@ -322,14 +353,15 @@ def terraform_apply(var_file: Path, extra_vars: list[str] | None = None) -> None
 
 def terraform_destroy(var_file: Path) -> None:
     """Destroy the Terraform stack for the selected workspace."""
-    terraform_cmd("destroy", f"-var-file={var_file}", "-auto-approve", timeout=300)
+    terraform_cmd("destroy", "-var-file", str(var_file), "-auto-approve", timeout=300)
 
 
 def check_plan_is_clean(var_file: Path, description: str) -> bool:
     """Validate Terraform idempotence using detailed exit codes."""
     result = terraform_cmd(
         "plan",
-        f"-var-file={var_file}",
+        "-var-file",
+        str(var_file),
         "-detailed-exitcode",
         check=False,
         timeout=180,
@@ -349,13 +381,13 @@ def check_plan_is_clean(var_file: Path, description: str) -> bool:
 
 
 def test_prerequisites() -> bool:
-    """Confirm the required CLI tools are available."""
+    """Confirm the required CLIs exist and the local infrastructure is reachable."""
     all_ok = True
     commands = [
         ("Terraform is available", ["terraform", "version"]),
         ("kubectl is available", ["kubectl", "version", "--client"]),
         ("minikube is available", ["minikube", "version"]),
-        ("docker is available", ["docker", "version", "--format", "{{.Server.Version}}"]),
+        ("docker CLI is available", ["docker", "--version"]),
     ]
 
     for description, cmd in commands:
@@ -366,8 +398,27 @@ def test_prerequisites() -> bool:
             fail(f"{description}: {exc}")
             all_ok = False
 
-    context = run(["kubectl", "config", "current-context"], timeout=30).stdout.strip()
+    context = current_context()
     all_ok &= check_equal("kubectl current context is minikube", context, "minikube")
+
+    if docker_daemon_accessible():
+        ok("Docker daemon is reachable")
+    else:
+        fail("Docker daemon is reachable")
+        all_ok = False
+
+    if minikube_running():
+        ok("Minikube control plane is running")
+    else:
+        fail("Minikube control plane is running")
+        all_ok = False
+
+    if cluster_accessible():
+        ok("Kubernetes API is reachable through kubectl")
+    else:
+        fail("Kubernetes API is reachable through kubectl")
+        all_ok = False
+
     return all_ok
 
 
@@ -728,7 +779,7 @@ def test_rollback() -> bool:
     """Apply a temporary backend message change and roll back to the baseline tfvars."""
     all_ok = True
     try:
-        terraform_apply(DEV_TFVARS, extra_vars=[f"-var=app_message={ROLLBACK_MESSAGE}"])
+        terraform_apply(DEV_TFVARS, extra_vars=["-var", f"app_message={ROLLBACK_MESSAGE}"])
         all_ok &= wait_for_environment(DEV_NAMESPACE)
         all_ok &= wait_until(
             lambda: backend_response_contains(DEV_NAMESPACE, ROLLBACK_MESSAGE),
@@ -846,6 +897,7 @@ def main() -> None:
 
     passed = 0
     failed = 0
+    critical_tests = {"Prerequisites"}
 
     for name, fn in tests:
         print("\n" + "=" * 72)
@@ -856,11 +908,17 @@ def main() -> None:
             result = fn()
             if result is False:
                 failed += 1
+                if name in critical_tests:
+                    info(f"Stopping after critical test failure: {name}")
+                    break
             else:
                 passed += 1
         except Exception as exc:
             fail(f"{name} crashed: {exc}")
             failed += 1
+            if name in critical_tests:
+                info(f"Stopping after critical test failure: {name}")
+                break
 
     print("\n" + "=" * 72)
     print("FINAL SUMMARY")

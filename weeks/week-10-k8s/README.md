@@ -278,6 +278,7 @@ Make sure Minikube is running:
 
 ```bash
 minikube start
+kubectl cluster-info
 ```
 
 If the custom images are only local, load them into Minikube:
@@ -372,14 +373,14 @@ Use `PowerShell`, not Git Bash, for the following commands.
 
    ```powershell
    cd "C:\Users\alvar\OneDrive\Desktop\UNI\3r_Curs\2n_quatri\GSX\Practiques\Practica2-GSX\weeks\week-10-k8s"
-   minikube start
+   "minikube start
    kubectl config current-context
    kubectl apply -f kubernetes
    kubectl rollout status deployment/simple-app --timeout=120s
    kubectl rollout status statefulset/redis --timeout=120s
    kubectl rollout restart deployment/nginx
    kubectl rollout status deployment/nginx --timeout=180s
-   kubectl get pods
+   kubectl get pods"
    ```
 
 2. Open the Windows firewall in an administrator PowerShell window:
@@ -392,15 +393,15 @@ Use `PowerShell`, not Git Bash, for the following commands.
 3. Publish the service to the LAN in a normal PowerShell window and keep it open:
 
    ```powershell
-   kubectl port-forward --address 0.0.0.0 service/nginx 8080:80
+   "kubectl port-forward --address 0.0.0.0 service/nginx 8080:80"
    ```
 
 4. Verify locally from the host:
 
    ```powershell
-   ipconfig
+   "ipconfig
    Invoke-WebRequest http://127.0.0.1:8080/ -UseBasicParsing
-   Invoke-WebRequest http://127.0.0.1:8080/api/ -UseBasicParsing
+   Invoke-WebRequest http://127.0.0.1:8080/api/ -UseBasicParsing"
    ```
 
 5. From another laptop on the same Wi-Fi, open:
@@ -486,10 +487,18 @@ Because the number of checks in Week 10 is already large, the repository include
 py -3 verify_week10.py
 ```
 
+The script can also be launched from the repository root:
+
+```bash
+py -3 weeks/week-10-k8s/verify_week10.py
+```
+
 The script is designed as a readable test runner, not as a black box. It is divided into:
 
 - helper routines that execute `kubectl` commands, wait for readiness, read fields with `jsonpath`, run commands inside Pods, and expose `nginx` locally through `kubectl port-forward`
 - test routines that validate one concept at a time and print explicit `[PASS]` or `[FAIL]` lines
+
+Before applying manifests, the script now performs a fast reachability check against the active `kubectl` context. If the Kubernetes API is not reachable, it stops immediately with a clear error instead of continuing into long readiness waits that would otherwise fail later.
 
 The script does **not** depend on `minikube service --url` for HTTP checks. Instead, it uses `kubectl port-forward service/nginx ...` because that is more reliable on Windows with the Docker driver.
 
@@ -499,12 +508,17 @@ The script validates access from the local host. The additional LAN-access demon
 
 A successful run currently contains the following test blocks:
 
-1. `Apply manifests`
+1. `Cluster reachable`
+
+   This checks that the active `kubectl` context can actually reach the
+   Kubernetes API server before any other verification starts.
+
+2. `Apply manifests`
 
    This reapplies every manifest in `kubernetes/` so the verification runs
    against the latest configuration.
 
-2. `Resources exist`
+3. `Resources exist`
 
    This checks that the expected objects were created:
 
@@ -520,7 +534,7 @@ A successful run currently contains the following test blocks:
    - `PersistentVolume/app-data-pv`
    - `PersistentVolumeClaim/app-data-pvc`
 
-3. `Workloads ready`
+4. `Workloads ready`
 
    This waits until:
 
@@ -528,7 +542,7 @@ A successful run currently contains the following test blocks:
    - `simple-app` has ready replicas
    - `redis` has all StatefulSet replicas ready
 
-4. `Configuration and service types`
+5. `Configuration and service types`
 
    This verifies:
 
@@ -540,7 +554,7 @@ A successful run currently contains the following test blocks:
    - the Nginx Pod really receives the reverse-proxy configuration from
      the ConfigMap
 
-5. `Probes and resources`
+6. `Probes and resources`
 
    This verifies that:
 
@@ -549,42 +563,42 @@ A successful run currently contains the following test blocks:
    - CPU and memory requests are defined
    - CPU and memory limits are defined
 
-6. `Redis ping`
+7. `Redis ping`
 
    This executes `redis-cli ping` inside `redis-0` and expects `PONG`.
 
-7. `In-cluster connectivity`
+8. `In-cluster connectivity`
 
    This verifies service-name communication inside the cluster:
 
    - `nginx` reaches `simple-app` through `http://simple-app:5000/`
    - `simple-app` opens a TCP connection to `redis:6379`
 
-8. `HTTP endpoints`
+9. `HTTP endpoints`
 
    This exposes `nginx` locally with `kubectl port-forward` and checks:
 
    - `/` returns HTTP 200
    - `/api/` reaches the backend through the reverse proxy
 
-9. `Scaling`
+10. `Scaling`
 
    This scales `nginx` from 1 replica to 3 replicas and then back to 1
    replica, proving that Kubernetes updates the number of Pods
    automatically.
 
-10. `Resilience`
+11. `Resilience`
 
     This deletes an `nginx` Pod and checks that the Deployment recreates
     it automatically.
 
-11. `Persistence`
+12. `Persistence`
 
     This writes a marker file into `/data` in `simple-app`, restarts the
     Deployment, and verifies that the file still exists after the new Pod
     is ready.
 
-12. `Redis persistence`
+13. `Redis persistence`
 
     This writes a Redis key, deletes `redis-0`, waits for the StatefulSet
     Pod to come back, and verifies that the Redis data is still present.
@@ -595,7 +609,7 @@ A passing run ends with a summary like:
 
 ```text
 FINAL SUMMARY
-Passed: 12
+Passed: 13
 Failed: 0
 ```
 
@@ -603,6 +617,8 @@ During the run, each test prints the exact `kubectl` command being executed and 
 
 - an automatic regression check
 - a traceable record of how the Week 10 stack was validated
+
+If the cluster is unreachable or manifest application fails, the script now stops after that critical failure instead of continuing into the remaining checks with misleading follow-up errors.
 
 ### 10.11 Mapping the script to Week 10 deliverables
 

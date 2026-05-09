@@ -304,9 +304,9 @@ Example:
 ```bash
 terraform workspace select dev
 terraform apply \
-  -var-file=environments/dev.tfvars \
-  -var="nginx_image=ghcr.io/<owner>/green-devcorp-nginx:sha-<commit>" \
-  -var="simple_app_image=ghcr.io/<owner>/green-devcorp-simple-app:sha-<commit>" \
+  -var-file ./environments/dev.tfvars \
+  -var "nginx_image=ghcr.io/<owner>/green-devcorp-nginx:sha-<commit>" \
+  -var "simple_app_image=ghcr.io/<owner>/green-devcorp-simple-app:sha-<commit>" \
   -auto-approve
 ```
 
@@ -365,28 +365,28 @@ terraform init -backend=false
 
 ```bash
 terraform workspace new dev
-terraform apply -var-file=environments/dev.tfvars -auto-approve
+terraform apply -var-file ./environments/dev.tfvars -auto-approve
 ```
 
 If the workspace already exists:
 
 ```bash
 terraform workspace select dev
-terraform apply -var-file=environments/dev.tfvars -auto-approve
+terraform apply -var-file ./environments/dev.tfvars -auto-approve
 ```
 
 ### 8.6 Deploy `staging`
 
 ```bash
 terraform workspace new staging
-terraform apply -var-file=environments/staging.tfvars -auto-approve
+terraform apply -var-file ./environments/staging.tfvars -auto-approve
 ```
 
 Or:
 
 ```bash
 terraform workspace select staging
-terraform apply -var-file=environments/staging.tfvars -auto-approve
+terraform apply -var-file ./environments/staging.tfvars -auto-approve
 ```
 
 ### 8.7 Inspect Outputs
@@ -398,13 +398,13 @@ terraform output
 ### 8.8 Destroy an Environment
 
 ```bash
-terraform destroy -var-file=environments/dev.tfvars -auto-approve
+terraform destroy -var-file ./environments/dev.tfvars -auto-approve
 ```
 
 Or:
 
 ```bash
-terraform destroy -var-file=environments/staging.tfvars -auto-approve
+terraform destroy -var-file ./environments/staging.tfvars -auto-approve
 ```
 
 ## 9. How to Verify
@@ -416,7 +416,7 @@ Important manual checks include:
 - `kubectl get pods -n green-dev-dev`
 - `kubectl get services -n green-dev-dev`
 - `kubectl get pvc,pv -n green-dev-dev`
-- `terraform plan -var-file=environments/dev.tfvars -detailed-exitcode`
+- `terraform plan -var-file ./environments/dev.tfvars -detailed-exitcode`
 - `kubectl exec -n green-dev-dev deploy/nginx -- curl -fsS http://simple-app:5000/`
 - `kubectl exec -n green-dev-dev redis-0 -- redis-cli ping`
 
@@ -428,10 +428,29 @@ The repository includes:
 
 - [verify_week11.py](verify_week11.py)
 
-Run it from the repository root:
+Before running it, make sure the local dependencies it needs are actually alive:
+
+- Docker CLI is installed: `docker --version`
+- Docker daemon is reachable: `docker version --format "{{.Server.Version}}"`
+- Minikube is installed: `minikube version`
+- Minikube control plane is running: `minikube status`
+- the active Kubernetes context is `minikube`: `kubectl config current-context`
+- the Kubernetes API is reachable: `kubectl cluster-info`
+
+This matters because the script builds images with Docker, builds them again inside Minikube, applies Terraform locally, and then verifies the resulting Kubernetes workloads through `kubectl`.
+
+The script resolves repository paths relative to its own file, so it can be launched from the repository root, from `weeks/week-11-iac/`, or from another working directory as long as you pass the script path.
+
+Example from the repository root:
 
 ```bash
 py -3 weeks/week-11-iac/verify_week11.py
+```
+
+Example from inside `weeks/week-11-iac/`:
+
+```bash
+py -3 verify_week11.py
 ```
 
 The script is not a black box. It prints every command it executes and reports explicit `[PASS]` or `[FAIL]` lines.
@@ -444,7 +463,12 @@ A successful run currently contains these test blocks:
 
    - checks that `terraform`, `kubectl`, `minikube`, and `docker` are
      available
+   - checks that the Docker daemon is reachable
+   - checks that Minikube reports a running control plane
    - confirms that the active Kubernetes context is `minikube`
+   - confirms that `kubectl` can reach the Kubernetes API server
+   - stops early if these prerequisite checks fail, to avoid misleading
+     follow-up errors in later test blocks
 
 2. `Build images`
 
@@ -536,13 +560,187 @@ Rollback is documented and validated in two ways.
 
 ### 10.1 Configuration Rollback
 
-The verification script temporarily changes:
+The verification script proves configuration rollback in `test_rollback()`.
+
+The script does not change the backend image. Instead, it temporarily overrides only:
 
 - `app_message`
 
-It then reapplies the baseline Terraform configuration and confirms that the original backend message is restored.
+The automated sequence is:
 
-This proves that Terraform can safely revert configuration changes while keeping the storage resources intact.
+1. Run `terraform apply` for `dev` with an extra variable override:
+
+   ```bash
+   terraform apply -var-file ./environments/dev.tfvars -var "app_message=Hello from Terraform rollback candidate" -auto-approve
+   ```
+
+2. Wait until the `simple-app` Deployment is ready again.
+3. Verify that the backend response now contains `Hello from Terraform rollback candidate`.
+
+   To see the same result in a browser, run this in a separate terminal and keep it open:
+
+   ```bash
+   kubectl -n green-dev-dev port-forward service/nginx 8080:80
+   ```
+
+   Then open and refresh:
+
+   ```text
+   http://127.0.0.1:8080/api/
+   ```
+
+4. Reapply the baseline Terraform configuration without the override:
+
+   ```bash
+   terraform apply -var-file ./environments/dev.tfvars -auto-approve
+   ```
+
+5. Wait again for the Deployment to become ready.
+6. Verify that the backend response is back to `Hello from Terraform dev`.
+
+   The same browser view should now return to the baseline message when you refresh:
+
+   ```text
+   http://127.0.0.1:8080/api/
+   ```
+
+This proves that Terraform can safely revert configuration changes while keeping the same application image and the same persistent storage resources.
+
+#### Manual Demonstration of Configuration Rollback
+
+Run these commands from `weeks/week-11-iac/terraform/`.
+
+1. Select the `dev` workspace.
+
+   ```bash
+   terraform workspace select dev
+   ```
+
+2. Record the baseline configuration, deployed image, and backend response.
+
+   ```bash
+   kubectl -n green-dev-dev get configmap simple-app-config -o jsonpath='{.data.APP_MESSAGE}'
+   kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+   kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+   ```
+
+   To see the same backend response in a browser, run this in a separate terminal and keep it open during the whole rollback demonstration:
+
+   ```bash
+   kubectl -n green-dev-dev port-forward service/nginx 8080:80
+   ```
+
+   Then open:
+
+   ```text
+   http://127.0.0.1:8080/api/
+   ```
+
+   Expected results:
+
+   - the ConfigMap returns:
+
+     ```text
+     Hello from Terraform dev
+     ```
+
+   - the image stays on the currently deployed backend tag, for example:
+
+     ```text
+     simple-app-gsx:latest
+     ```
+
+   - the backend response looks like:
+
+     ```text
+     Hello from Terraform dev | Visits: <n>
+     ```
+
+3. Apply a temporary configuration change.
+
+   ```bash
+   terraform apply -var-file ./environments/dev.tfvars -var "app_message=Hello from Terraform rollback candidate" -auto-approve
+   kubectl -n green-dev-dev rollout status deployment/simple-app --timeout=180s
+   ```
+
+   Expected result:
+
+   - `deployment "simple-app" successfully rolled out`
+
+4. Verify that the configuration changed but the image did not.
+
+   ```bash
+   kubectl -n green-dev-dev get configmap simple-app-config -o jsonpath='{.data.APP_MESSAGE}'
+   kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+   kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+   ```
+
+   In the browser, refresh:
+
+   ```text
+   http://127.0.0.1:8080/api/
+   ```
+
+   Expected results:
+
+   - the ConfigMap now returns:
+
+     ```text
+     Hello from Terraform rollback candidate
+     ```
+
+   - the image is still the same backend image as before
+   - the backend response now looks like:
+
+     ```text
+     Hello from Terraform rollback candidate | Visits: <n>
+     ```
+
+5. Roll back to the baseline Terraform configuration.
+
+   ```bash
+   terraform apply -var-file ./environments/dev.tfvars -auto-approve
+   kubectl -n green-dev-dev rollout status deployment/simple-app --timeout=180s
+   ```
+
+   Expected result:
+
+   - `deployment "simple-app" successfully rolled out`
+
+6. Verify that the original message is restored.
+
+   ```bash
+   kubectl -n green-dev-dev get configmap simple-app-config -o jsonpath='{.data.APP_MESSAGE}'
+   kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+   kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+   ```
+
+   In the browser, refresh:
+
+   ```text
+   http://127.0.0.1:8080/api/
+   ```
+
+   Expected results:
+
+   - the ConfigMap returns again:
+
+     ```text
+     Hello from Terraform dev
+     ```
+
+   - the image is still the same backend image
+   - the backend response returns to:
+
+     ```text
+     Hello from Terraform dev | Visits: <n>
+     ```
+
+This is the clearest manual proof of configuration rollback:
+
+- the message changes
+- the image does not change
+- the original message can be restored with a second `terraform apply`
 
 ### 10.2 Image Rollback
 
@@ -550,13 +748,302 @@ Because CI publishes immutable `sha-<commit>` tags, a previous image can be rest
 
 ```bash
 terraform apply \
-  -var-file=environments/dev.tfvars \
-  -var="nginx_image=ghcr.io/<owner>/green-devcorp-nginx:sha-<previous-commit>" \
-  -var="simple_app_image=ghcr.io/<owner>/green-devcorp-simple-app:sha-<previous-commit>" \
+  -var-file ./environments/dev.tfvars \
+  -var "nginx_image=ghcr.io/<owner>/green-devcorp-nginx:sha-<previous-commit>" \
+  -var "simple_app_image=ghcr.io/<owner>/green-devcorp-simple-app:sha-<previous-commit>" \
   -auto-approve
 ```
 
-That is the intended rollback procedure for deployed application versions.
+That is the intended rollback procedure for deployed application versions when CI has already published the images to a registry.
+
+For the local manual validation in this repository, the same rollback idea can be demonstrated without GitHub Actions and without using the verification script.
+
+The important idea is that image rollback cannot be proved by applying the same image tag twice. A second backend image with visibly different behavior must exist first, so the rollback can be observed from the running service.
+
+If you want to save setup time before a live demonstration, [prepare_image_rollback.py](prepare_image_rollback.py) automates steps 1 to 8, checks that Minikube is operational, recreates the temporary build context, and leaves the environment ready for the manual walkthrough from step 9 onward. It resolves paths relative to itself, so it can be launched from any working directory with `py -3 weeks/week-11-iac/prepare_image_rollback.py`. The manual steps below remain the canonical demonstration sequence.
+
+#### Manual Demonstration of Image Rollback
+
+Run steps 1 to 8 from the repository root.
+
+Run steps 9 to 15 from `weeks/week-11-iac/terraform/`.
+
+1. Create a temporary build folder, for example `weeks/week-11-iac/manual-image-rollback/`.
+
+2. Inside that folder, create `requirements.txt` with:
+
+   ```text
+   redis==7.4.0
+   ```
+
+3. Inside that folder, create `Dockerfile` with:
+
+   ```dockerfile
+   FROM python:3.12-alpine
+
+   ENV PYTHONDONTWRITEBYTECODE=1 \
+       PYTHONUNBUFFERED=1 \
+       PORT=5000
+
+   WORKDIR /app
+
+   RUN addgroup -S app && adduser -S app -G app
+
+   COPY requirements.txt ./requirements.txt
+   RUN pip install --no-cache-dir -r requirements.txt
+
+   COPY app.py ./app.py
+   RUN chown -R app:app /app
+
+   USER app
+
+   EXPOSE 5000
+
+   HEALTHCHECK --interval=30s --timeout=3s \
+     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" || exit 1
+
+   CMD ["python", "app.py"]
+   ```
+
+4. Copy the original backend source from `weeks/week-09-compose/docker-compose/simple-app/app.py` into `weeks/week-11-iac/manual-image-rollback/app.py`.
+
+5. In that temporary `app.py`, change only the root response line:
+
+   From:
+
+   ```python
+   self._send_text(200, f"{MESSAGE} | Visits: {visits}")
+   ```
+
+   To:
+
+   ```python
+   self._send_text(200, f"{MESSAGE} | Visits: {visits} | Image: rollback-new")
+   ```
+
+6. Build the baseline image and the modified image locally.
+
+   ```bash
+   docker build -t simple-app-gsx:rollback-old -f ./weeks/week-11-iac/docker/simple-app.Dockerfile .
+   docker build -t simple-app-gsx:rollback-new ./weeks/week-11-iac/manual-image-rollback
+   docker images simple-app-gsx
+   ```
+
+   Expected results:
+
+   - both builds finish without error
+   - `docker images simple-app-gsx` lists at least:
+
+     ```text
+     simple-app-gsx   rollback-old
+     simple-app-gsx   rollback-new
+     ```
+
+7. Optionally inspect the image contents before deploying them.
+
+   ```bash
+   docker run --rm simple-app-gsx:rollback-old cat /app/app.py
+   docker run --rm simple-app-gsx:rollback-new cat /app/app.py
+   ```
+
+   Expected results:
+
+   - the `rollback-old` output does not contain `| Image: rollback-new`
+   - the `rollback-new` output contains:
+
+     ```text
+     | Image: rollback-new
+     ```
+
+8. Build both images inside Minikube so the cluster can use them.
+
+   ```bash
+   minikube image build -t simple-app-gsx:rollback-old -f ./weeks/week-11-iac/docker/simple-app.Dockerfile .
+   minikube image build -t simple-app-gsx:rollback-new ./weeks/week-11-iac/manual-image-rollback
+   ```
+
+   Expected result:
+
+   - both commands finish without error
+
+9. Change into the Terraform directory.
+
+   ```bash
+   cd weeks/week-11-iac/terraform
+   ```
+
+10. Select the `dev` workspace and record the current baseline.
+
+   ```bash
+   terraform workspace select dev
+   kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+   kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+   ```
+
+   To see the same backend response in a browser, run this in a separate terminal and keep it open during the whole image rollback demonstration:
+
+   ```bash
+   kubectl -n green-dev-dev port-forward service/nginx 8080:80
+   ```
+
+   Then open:
+
+   ```text
+   http://127.0.0.1:8080/api/
+   ```
+
+   Expected results:
+
+   - the current image is the baseline backend image, usually:
+
+     ```text
+     simple-app-gsx:latest
+     ```
+
+   - the backend response looks like:
+
+     ```text
+     Hello from Terraform dev | Visits: <n>
+     ```
+
+11. Deploy the baseline rollback image.
+
+    ```bash
+    terraform apply -var-file ./environments/dev.tfvars -var "simple_app_image=simple-app-gsx:rollback-old" -auto-approve
+    kubectl -n green-dev-dev rollout status deployment/simple-app --timeout=180s
+    kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+    kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+    ```
+
+    In the browser, refresh:
+
+    ```text
+    http://127.0.0.1:8080/api/
+    ```
+
+    Expected results:
+
+    - rollout ends with:
+
+      ```text
+      deployment "simple-app" successfully rolled out
+      ```
+
+    - the Deployment image is now:
+
+      ```text
+      simple-app-gsx:rollback-old
+      ```
+
+    - the backend response still looks normal:
+
+      ```text
+      Hello from Terraform dev | Visits: <n>
+      ```
+
+12. Deploy the modified rollback image.
+
+    ```bash
+    terraform apply -var-file ./environments/dev.tfvars -var "simple_app_image=simple-app-gsx:rollback-new" -auto-approve
+    kubectl -n green-dev-dev rollout status deployment/simple-app --timeout=180s
+    kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+    kubectl -n green-dev-dev get pods -l app=simple-app -o wide
+    kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+    ```
+
+    In the browser, refresh:
+
+    ```text
+    http://127.0.0.1:8080/api/
+    ```
+
+    Expected results:
+
+    - rollout ends successfully
+    - the Deployment image becomes:
+
+      ```text
+      simple-app-gsx:rollback-new
+      ```
+
+    - the backend response now includes the visible marker:
+
+      ```text
+      Hello from Terraform dev | Visits: <n> | Image: rollback-new
+      ```
+
+13. Roll back to the previous backend image.
+
+    ```bash
+    terraform apply -var-file ./environments/dev.tfvars -var "simple_app_image=simple-app-gsx:rollback-old" -auto-approve
+    kubectl -n green-dev-dev rollout status deployment/simple-app --timeout=180s
+    kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+    kubectl -n green-dev-dev get pods -l app=simple-app -o wide
+    kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+    ```
+
+    In the browser, refresh:
+
+    ```text
+    http://127.0.0.1:8080/api/
+    ```
+
+    Expected results:
+
+    - rollout ends successfully
+    - the Deployment image changes back to:
+
+      ```text
+      simple-app-gsx:rollback-old
+      ```
+
+    - the backend response returns to:
+
+      ```text
+      Hello from Terraform dev | Visits: <n>
+      ```
+
+    - the marker `| Image: rollback-new` is gone
+
+14. Restore the repository default image tag.
+
+    ```bash
+    terraform apply -var-file ./environments/dev.tfvars -auto-approve
+    kubectl -n green-dev-dev rollout status deployment/simple-app --timeout=180s
+    kubectl -n green-dev-dev get deployment simple-app -o jsonpath='{.spec.template.spec.containers[0].image}'
+    kubectl -n green-dev-dev exec deploy/nginx -- curl -s http://simple-app:5000/
+    ```
+
+    In the browser, refresh:
+
+    ```text
+    http://127.0.0.1:8080/api/
+    ```
+
+    Expected results:
+
+    - the Deployment image returns to:
+
+      ```text
+      simple-app-gsx:latest
+      ```
+
+    - the backend response still looks normal:
+
+      ```text
+      Hello from Terraform dev | Visits: <n>
+      ```
+
+15. Remove the temporary `manual-image-rollback/` folder after the demonstration.
+
+This is the clearest manual proof of image rollback:
+
+- the deployed image tag changes
+- the backend response changes with it
+- Terraform can return the Deployment to the previous image
+- the default image tag can be restored at the end
+
+During a rollout there can be a short overlap where one pod is terminating and another is starting. In that moment, use `kubectl get pods -l app=simple-app -o wide` and wait until only the current running pod remains before concluding the verification.
 
 ## 11. Mapping to Week 11 Deliverables
 
