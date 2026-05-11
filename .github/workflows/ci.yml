@@ -112,11 +112,15 @@ jobs:
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.24.0
         with:
+          scan-type: image
           image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
+          scanners: vuln
           format: sarif
           output: trivy-${{ matrix.name }}.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          timeout: 15m0s
+          hide-progress: true
           exit-code: "1"
 
       - name: Upload Trivy results
