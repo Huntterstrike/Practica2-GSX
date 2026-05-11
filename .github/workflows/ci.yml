@@ -87,6 +87,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate image tags
+        env:
+          DOCKER_METADATA_SHORT_SHA_LENGTH: 40
         id: meta
         uses: docker/metadata-action@v5
         with:
