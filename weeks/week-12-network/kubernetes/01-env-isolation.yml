@@ -1,16 +1,131 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-same-env-prod
-  namespace: default
+  name: allow-nginx-egress-to-backend
+  namespace: green-dev-dev
 spec:
   podSelector:
     matchLabels:
-      env: prod
+      app: nginx
+      environment: dev
   policyTypes:
-    - Ingress
-  ingress:
-    - from:
+    - Egress
+  egress:
+    - to:
         - podSelector:
             matchLabels:
-              env: prod
+              app: simple-app
+              environment: dev
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-to-redis
+  namespace: green-dev-dev
+spec:
+  podSelector:
+    matchLabels:
+      app: simple-app
+      environment: dev
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+              environment: dev
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-nginx-egress-to-backend
+  namespace: green-dev-staging
+spec:
+  podSelector:
+    matchLabels:
+      app: nginx
+      environment: staging
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: simple-app
+              environment: staging
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-to-redis
+  namespace: green-dev-staging
+spec:
+  podSelector:
+    matchLabels:
+      app: simple-app
+      environment: staging
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+              environment: staging
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-nginx-egress-to-backend
+  namespace: green-dev-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: nginx
+      environment: prod
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: simple-app
+              environment: prod
+      ports:
+        - protocol: TCP
+          port: 5000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-to-redis
+  namespace: green-dev-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: simple-app
+      environment: prod
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+              environment: prod
+      ports:
+        - protocol: TCP
+          port: 6379

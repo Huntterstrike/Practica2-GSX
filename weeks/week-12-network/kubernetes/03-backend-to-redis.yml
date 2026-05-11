@@ -1,13 +1,13 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-backend-to-redis
-  namespace: default
+  name: allow-redis-ingress-from-backend
+  namespace: green-dev-dev
 spec:
   podSelector:
     matchLabels:
       app: redis
-      env: prod
+      environment: dev
   policyTypes:
     - Ingress
   ingress:
@@ -15,7 +15,51 @@ spec:
         - podSelector:
             matchLabels:
               app: simple-app
-              env: prod
+              environment: dev
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-ingress-from-backend
+  namespace: green-dev-staging
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+      environment: staging
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: simple-app
+              environment: staging
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-ingress-from-backend
+  namespace: green-dev-prod
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+      environment: prod
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: simple-app
+              environment: prod
       ports:
         - protocol: TCP
           port: 6379
