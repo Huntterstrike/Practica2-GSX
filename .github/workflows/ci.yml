@@ -73,9 +73,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -101,7 +98,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/green-devcorp-${{ matrix.name }}
           tags: |
             type=sha,prefix=sha-
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=stable,enable=${{ github.event_name == 'workflow_dispatch' && inputs.promote_stable == 'true' }}
 
       - name: Build and push image
@@ -114,23 +110,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-
-      - name: Debug Trivy to console
-        uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
-        with:
-          scan-type: image
-          image-ref: ${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
-          scanners: vuln
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          timeout: 15m0s
-          hide-progress: false
-          exit-code: "1"
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0

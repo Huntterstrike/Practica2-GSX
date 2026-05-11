@@ -820,7 +820,6 @@ def test_ci_workflow_static() -> bool:
         ("workflow logs in to GHCR", "docker/login-action@v3" in workflow),
         ("workflow generates metadata tags", "docker/metadata-action@v5" in workflow),
         ("workflow publishes SHA tags", "type=sha,prefix=sha-" in workflow),
-        ("workflow publishes main tags", "type=raw,value=main" in workflow),
         ("workflow supports a stable release tag", "type=raw,value=stable" in workflow),
         ("workflow uses Buildx cache", "cache-from: type=gha" in workflow and "cache-to: type=gha" in workflow),
         ("workflow scans images with Trivy", "aquasecurity/trivy-action" in workflow),

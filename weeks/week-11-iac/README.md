@@ -257,7 +257,7 @@ The second job builds two images:
 The workflow:
 
 - checks out the repository
-- sets up QEMU and Buildx
+- sets up Buildx
 - logs into GHCR
 - builds and pushes both images
 - applies caching with GitHub Actions cache
@@ -267,7 +267,6 @@ The workflow:
 The workflow publishes:
 
 - `sha-<commit>` tags for immutable CI artifacts
-- `main` tags for the latest `main` branch build
 - `stable` tags when manually promoted
 
 This satisfies the advanced release/tag strategy requirement and makes rollback practical.
