@@ -86,13 +86,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Normalize image owner
+        id: owner
+        shell: bash
+        run: |
+          echo "value=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
       - name: Generate image tags
         env:
           DOCKER_METADATA_SHORT_SHA_LENGTH: 40
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}
+          images: ${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/green-devcorp-${{ matrix.name }}
           tags: |
             type=sha,prefix=sha-
             type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
@@ -113,7 +119,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.24.0
         with:
           scan-type: image
-          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
+          image-ref: ${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
           scanners: vuln
           format: sarif
           output: trivy-${{ matrix.name }}.sarif
@@ -131,7 +137,7 @@ jobs:
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
+          image: ${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
           format: spdx-json
           output-file: sbom-${{ matrix.name }}.spdx.json
 
@@ -139,7 +145,7 @@ jobs:
         shell: bash
         run: |
           printf 'IMAGE_NAME=%s\n' \
-            "${{ env.REGISTRY }}/${{ github.repository_owner }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}" \
+            "${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}" \
             > image-${{ matrix.name }}.env
 
       - name: Upload image metadata and SBOM
