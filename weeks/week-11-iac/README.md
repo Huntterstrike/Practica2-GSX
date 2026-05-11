@@ -282,6 +282,47 @@ The CI workflow also includes:
 
 This covers the advanced CI/CD requirements around security scanning and artifact generation.
 
+### 6.6 Manual Verification in GitHub Actions
+
+The repository README is not part of the workflow `push` path filter. Because of that, a commit that only changes `weeks/week-11-iac/README.md` does not trigger the workflow automatically.
+
+The `push` trigger currently reacts to changes in:
+
+- `.github/workflows/ci.yml`
+- `weeks/week-08-docker/nginx/**`
+- `weeks/week-09-compose/docker-compose/simple-app/app.py`
+- `weeks/week-09-compose/docker-compose/simple-app/requirements.txt`
+- `weeks/week-11-iac/docker/simple-app.Dockerfile`
+- `weeks/week-11-iac/terraform/**`
+
+If you want to check the CI manually from the GitHub web UI, use this sequence:
+
+1. Open the repository `Actions` tab and select the `week11-ci` workflow.
+2. Open the latest green run triggered by `push` or start a manual run with `workflow_dispatch`.
+3. Verify that `validate-terraform` is green.
+4. Verify that both matrix jobs in `build-images` are green:
+   - `nginx`
+   - `simple-app`
+5. Open each image job and confirm these steps are green:
+   - `Build and push image`
+   - `Scan image with Trivy`
+   - `Upload Trivy results`
+   - `Generate SBOM`
+   - `Upload image metadata and SBOM`
+6. Open the `Artifacts` section of the run and verify that deployable metadata and SBOM artifacts were uploaded.
+7. If the run was started manually with `promote_stable=true`, verify that the workflow also published the `stable` image tag.
+
+Expected result:
+
+- the entire workflow is green
+- Terraform validation passes
+- both images are built and pushed
+- Trivy scanning passes
+- SARIF upload succeeds
+- SBOM files are generated
+- workflow artifacts are available for download
+- `stable` tags are only published during intentional manual promotion
+
 ## 7. Local CD Workflow
 
 Because GitHub Actions cannot deploy into local Minikube, deployment is intentionally local.
