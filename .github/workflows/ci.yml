@@ -115,6 +115,23 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
+      - name: Debug Trivy to console
+        uses: aquasecurity/trivy-action@v0.24.0
+        continue-on-error: true
+        with:
+          scan-type: image
+          image-ref: ${{ env.REGISTRY }}/${{ steps.owner.outputs.value }}/green-devcorp-${{ matrix.name }}:sha-${{ github.sha }}
+          scanners: vuln
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          timeout: 15m0s
+          hide-progress: false
+          exit-code: "1"
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.24.0
         with:
