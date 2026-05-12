@@ -1,0 +1,26 @@
+apiVersion: crd.projectcalico.org/v1
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-prod-nodeport-from-approved-subnets
+spec:
+  order: 10
+  selector: role == "nodeport-prod"
+  preDNAT: true
+  applyOnForward: true
+  types:
+    - Ingress
+  ingress:
+    - action: Allow
+      protocol: TCP
+      source:
+        nets:
+          - 10.0.10.0/24
+          - 10.0.20.0/24
+      destination:
+        ports:
+          - 31082
+    - action: Deny
+      protocol: TCP
+      destination:
+        ports:
+          - 31082

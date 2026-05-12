@@ -26,7 +26,9 @@ week-12-network/
 |   |-- 02-frontend-to-backend.yml
 |   |-- 03-backend-to-redis.yml
 |   |-- 04-allow-nginx-ingress.yml
-|   `-- 05-allow-dns.yml
+|   |-- 05-allow-dns.yml
+|   |-- 06-prod-nodeport-hostendpoint.yml
+|   `-- 07-prod-nodeport-external-access.yml
 |-- QUESTIONS.md
 |-- RESEARCH.md
 |-- README.md
@@ -193,6 +195,8 @@ The policy set is intentionally small and composable.
 | [03-backend-to-redis.yml](kubernetes/03-backend-to-redis.yml) | ingress rules on `redis` from the backend |
 | [04-allow-nginx-ingress.yml](kubernetes/04-allow-nginx-ingress.yml) | CIDR-based ingress to `prod nginx` for partners and office VPN |
 | [05-allow-dns.yml](kubernetes/05-allow-dns.yml) | DNS egress to CoreDNS |
+| [06-prod-nodeport-hostendpoint.yml](kubernetes/06-prod-nodeport-hostendpoint.yml) | optional Calico host endpoint for a stronger external-access lab test |
+| [07-prod-nodeport-external-access.yml](kubernetes/07-prod-nodeport-external-access.yml) | optional Calico `preDNAT` policy for NodePort testing from simulated partner/office networks |
 
 Important design choice:
 
@@ -204,7 +208,50 @@ Important design choice:
 
 ## 7. Deployment Workflow
 
-### 7.1 Deploy the Application Stack
+### 7.1 Prepare the Local Images
+
+After `minikube delete` and a fresh `minikube start --cni=calico`, the
+application images used by Week 11 do not exist inside the new Minikube node
+yet. Rebuild them locally and also build them inside Minikube before applying
+Terraform.
+
+From the repository root:
+
+```bash
+docker build -t nginx-gsx:latest weeks/week-08-docker/nginx
+docker build -t simple-app-gsx:latest -f weeks/week-11-iac/docker/simple-app.Dockerfile .
+
+minikube image build -t nginx-gsx:latest weeks/week-08-docker/nginx
+minikube image build -t simple-app-gsx:latest -f weeks/week-11-iac/docker/simple-app.Dockerfile .
+```
+
+Expected result:
+
+- both images exist in the local Docker daemon
+- both images also exist inside the Minikube node runtime
+- Week 11 pods no longer need to pull `nginx-gsx:latest` or
+  `simple-app-gsx:latest` from an external registry
+
+If you already applied Terraform before rebuilding the images and the pods are
+stuck in `ImagePullBackOff`, rebuild the images and then recreate the affected
+pods:
+
+```bash
+kubectl delete pod -n green-dev-dev -l app=nginx
+kubectl delete pod -n green-dev-dev -l app=simple-app
+kubectl delete pod -n green-dev-staging -l app=nginx
+kubectl delete pod -n green-dev-staging -l app=simple-app
+kubectl delete pod -n green-dev-prod -l app=nginx
+kubectl delete pod -n green-dev-prod -l app=simple-app
+```
+
+Expected result:
+
+- Kubernetes recreates the pods
+- the new pods start successfully using the images now available inside
+  Minikube
+
+### 7.2 Deploy the Application Stack
 
 This week depends on Week 11.
 
@@ -214,32 +261,37 @@ From [weeks/week-11-iac/terraform](../week-11-iac/terraform):
 terraform init -backend=false
 
 terraform workspace select dev
+terraform destroy -var-file ./environments/dev.tfvars -auto-approve
 terraform apply -var-file ./environments/dev.tfvars -auto-approve
 
 terraform workspace select staging
+terraform destroy -var-file ./environments/staging.tfvars -auto-approve
 terraform apply -var-file ./environments/staging.tfvars -auto-approve
 
 terraform workspace select prod
+terraform destroy -var-file ./environments/prod.tfvars -auto-approve
 terraform apply -var-file ./environments/prod.tfvars -auto-approve
 ```
 
-If `dev` or `staging` were stored in Terraform state from an older Minikube
-cluster, use:
-
-```bash
-terraform destroy -var-file ./environments/dev.tfvars -auto-approve
-terraform apply -var-file ./environments/dev.tfvars -auto-approve
-```
-
-and the same pattern for `staging`.
-
-### 7.2 Apply the Policies
+### 7.3 Apply the Policies
 
 From [weeks/week-12-network](.):
 
 ```bash
-kubectl apply -f kubernetes/
+kubectl apply -f kubernetes/00-default-deny.yml
+kubectl apply -f kubernetes/01-env-isolation.yml
+kubectl apply -f kubernetes/02-frontend-to-backend.yml
+kubectl apply -f kubernetes/03-backend-to-redis.yml
+kubectl apply -f kubernetes/04-allow-nginx-ingress.yml
+kubectl apply -f kubernetes/05-allow-dns.yml
 ```
+
+Notes:
+
+- `06-prod-nodeport-hostendpoint.yml` and
+  `07-prod-nodeport-external-access.yml` are not part of the base deployment
+- they are applied only during the stronger manual `Intermediate` validation
+  in section `8.1`
 
 ## 8. Verification
 
@@ -247,6 +299,13 @@ kubectl apply -f kubernetes/
 
 Run the following checks from the repository root after deploying Week 11 and
 applying the Week 12 policies.
+
+How to read this section:
+
+- steps `1` to `9` are the manual verification path for the `Core` part
+- step `10` is the stronger manual proof for the `Intermediate` external-access
+  requirement
+- step `11` is an optional visual confirmation that helps during the demo
 
 1. Confirm that the three namespaces exist.
 
@@ -327,15 +386,17 @@ Expected result:
 
 - each command prints a non-empty cluster IP
 
-7. Confirm that an application shortcut is blocked.
+7. Confirm that an application shortcut is blocked in every environment.
 
 ```bash
 kubectl exec -n green-dev-dev deploy/nginx -- curl -s --max-time 3 http://redis:6379
+kubectl exec -n green-dev-staging deploy/nginx -- curl -s --max-time 3 http://redis:6379
+kubectl exec -n green-dev-prod deploy/nginx -- curl -s --max-time 3 http://redis:6379
 ```
 
 Expected result:
 
-- the command fails or times out
+- all three commands fail or time out
 - `nginx` must not reach `redis` directly
 
 8. Confirm cross-environment isolation.
@@ -366,7 +427,105 @@ Expected result:
 - the second CIDR is `10.0.20.0/24`
 - the allowed ports are `80` and `443`
 
-10. Optional browser check for the production entry point.
+10. Stronger `Intermediate` proof: simulate external partner, office, and
+    outsider networks and test real access to the production NodePort.
+
+Create three Docker networks:
+
+```powershell
+docker network create --subnet 10.0.10.0/24 partner-net
+docker network create --subnet 10.0.20.0/24 office-net
+docker network create --subnet 10.0.30.0/24 outsider-net
+```
+
+Connect the `minikube` container to those networks:
+
+```powershell
+docker network connect partner-net minikube
+docker network connect office-net minikube
+docker network connect outsider-net minikube
+```
+
+Confirm the IPs that `minikube` received:
+
+```powershell
+(docker inspect minikube | ConvertFrom-Json)[0].NetworkSettings.Networks.'partner-net'.IPAddress
+(docker inspect minikube | ConvertFrom-Json)[0].NetworkSettings.Networks.'office-net'.IPAddress
+(docker inspect minikube | ConvertFrom-Json)[0].NetworkSettings.Networks.'outsider-net'.IPAddress
+```
+
+Expected result:
+
+- `partner-net` IP: `10.0.10.2`
+- `office-net` IP: `10.0.20.2`
+- `outsider-net` IP: `10.0.30.2`
+
+Apply the stronger Calico rules for external NodePort testing:
+
+```powershell
+kubectl apply -f .\kubernetes\06-prod-nodeport-hostendpoint.yml
+kubectl apply -f .\kubernetes\07-prod-nodeport-external-access.yml
+kubectl get hostendpoint
+kubectl get globalnetworkpolicy
+```
+
+Expected result:
+
+- `minikube-nodeport-access` appears as a `HostEndpoint`
+- `allow-prod-nodeport-from-approved-subnets` appears as a `GlobalNetworkPolicy`
+
+Test allowed access from the partner subnet:
+
+```powershell
+docker run --rm --network partner-net simple-app-gsx:latest python -c "import urllib.request; print(urllib.request.urlopen('http://10.0.10.2:31082/api/', timeout=5).read().decode())"
+```
+
+Expected result:
+
+- request succeeds
+- response contains `Hello from Terraform prod`
+
+Test allowed access from the office subnet:
+
+```powershell
+docker run --rm --network office-net simple-app-gsx:latest python -c "import urllib.request; print(urllib.request.urlopen('http://10.0.20.2:31082/api/', timeout=5).read().decode())"
+```
+
+Expected result:
+
+- request succeeds
+- response contains `Hello from Terraform prod`
+
+Test blocked access from a non-approved subnet:
+
+```powershell
+docker run --rm --network outsider-net simple-app-gsx:latest python -c "import urllib.request; print(urllib.request.urlopen('http://10.0.30.2:31082/api/', timeout=5).read().decode())"
+```
+
+Expected result:
+
+- request fails with timeout, reset, or another connection error
+- it must not return the production message
+
+Clean up the temporary external-access test resources:
+
+```powershell
+kubectl delete -f .\kubernetes\07-prod-nodeport-external-access.yml
+kubectl delete -f .\kubernetes\06-prod-nodeport-hostendpoint.yml
+docker network disconnect partner-net minikube
+docker network disconnect office-net minikube
+docker network disconnect outsider-net minikube
+docker network rm partner-net
+docker network rm office-net
+docker network rm outsider-net
+```
+
+Expected result:
+
+- the temporary Calico objects are removed
+- the three Docker networks are removed
+
+11. Optional browser check for the production entry point.
 
 ```bash
 kubectl -n green-dev-prod port-forward service/nginx 8082:80
@@ -395,16 +554,15 @@ What was tested directly:
 - traffic restriction by role (`nginx`, `simple-app`, `redis`)
 - cross-environment isolation
 - the shape of the CIDR-based partner ingress rule
+- external partner and office access to the production NodePort using simulated
+  Docker networks plus Calico `HostEndpoint` and `preDNAT` policy
+- blocked outsider access to the same production NodePort
 
 What is documented rather than fully simulated:
 
 - a real office-to-office VPN tunnel
-- a real client machine physically located inside `10.0.10.0/24`
-- a real partner laptop reaching `prod` from that external subnet
-
-In this lab, the CIDR-based partner rule is validated structurally through the
-NetworkPolicy object itself. That is enough to prove the intended design, but
-it is not the same thing as a real external network acceptance test.
+- a real partner laptop physically connected from outside the Docker host
+- a full multi-host office network with routing between separate physical sites
 
 ### 8.3 Automated Check
 
@@ -421,14 +579,39 @@ chmod +x verify_week12.sh
 
 The script validates:
 
-- Minikube context
-- Calico presence
-- namespace existence
-- policy existence
-- allowed service paths
-- DNS resolution
-- cross-environment isolation
-- partner ingress policy shape in `prod`
+- `Prerequisites`
+  - confirms the current Kubernetes context is `minikube`
+  - confirms that Calico is present in `kube-system`
+- `Environment existence`
+  - checks that `green-dev-dev`, `green-dev-staging`, and `green-dev-prod`
+    exist
+- `Policy deployment`
+  - checks that the expected `NetworkPolicy` objects exist in each namespace
+  - checks that the production ingress policy exists in `prod`
+- `Allowed application path`
+  - verifies that `nginx` can still reach `simple-app` in `dev`, `staging`,
+    and `prod`
+- `Backend persistence path`
+  - verifies that `simple-app` can still reach `redis` in `dev`, `staging`,
+    and `prod`
+- `DNS`
+  - verifies that service-name resolution still works after the egress rules
+    are applied
+- `Cross-environment isolation`
+  - verifies that `dev` cannot reach `staging`
+  - verifies that `staging` cannot reach `prod`
+  - verifies that `prod` cannot reach `dev`
+- `Intermediate policy shape`
+  - verifies that the `prod` ingress rule contains:
+    - partner CIDR `10.0.10.0/24`
+    - office CIDR `10.0.20.0/24`
+    - ports `80` and `443`
+
+The script does not replace two manual demonstrations from section `8.1`:
+
+- the explicit `nginx -> redis` blocked-path check
+- the stronger external-access proof with Docker networks, `HostEndpoint`, and
+  `GlobalNetworkPolicy preDNAT`
 
 The current implementation has already been tested locally with Calico and
 passed all checks.

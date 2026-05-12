@@ -1,0 +1,15 @@
+apiVersion: crd.projectcalico.org/v1
+kind: HostEndpoint
+metadata:
+  name: minikube-nodeport-access
+  labels:
+    role: nodeport-prod
+spec:
+  node: minikube
+  interfaceName: "*"
+  expectedIPs:
+    - 10.0.10.2
+    - 10.0.20.2
+    - 10.0.30.2
+  profiles:
+    - projectcalico-default-allow
