@@ -1,16 +1,3 @@
-╔═══════════════════════════════════════════════════════════════════════╗
-║                                                                       ║
-║   📊 CHALLENGE A: OBSERVABILIDAD CON PROMETHEUS & GRAFANA             ║
-║      Week 13 - Práctica 2: Organizational IT Infrastructure          ║
-║                                                                       ║
-╚═══════════════════════════════════════════════════════════════════════╝
-
-Hola Gaizka! 👋
-
-Este directorio contiene una implementación COMPLETA y lista para usar
-del Challenge A de la Semana 13.
-
-═══════════════════════════════════════════════════════════════════════
 
 🚀 INICIO RÁPIDO (3 PASOS)
 
@@ -28,22 +15,11 @@ del Challenge A de la Semana 13.
 
 📚 DOCUMENTACIÓN (en orden de lectura recomendado)
 
-  1️⃣  QUICKSTART.md
-      → Guía rápida de 3 pasos
-      → Ideal para empezar inmediatamente
-      → 5 minutos de lectura
-
-  2️⃣  README_ChallengeA.md  
+  1️⃣  EADME_ChallengeA.md  
       → Guía completa en español (700+ líneas)
       → Conceptos, arquitectura, troubleshooting
       → Incluye TODO lo que necesitas saber
       → 30 minutos de lectura
-
-  3️⃣  ESTRUCTURA_Y_USO.md
-      → Casos de uso específicos
-      → Referencia de comandos y queries
-      → Workflows completos
-      → Consulta según necesidad
 
 ═══════════════════════════════════════════════════════════════════════
 
@@ -141,21 +117,7 @@ del Challenge A de la Semana 13.
 
   4. Consulta la sección Troubleshooting en README_ChallengeA.md
 
-═══════════════════════════════════════════════════════════════════════
 
-💡 ESTRUCTURA DEL PROYECTO
-
-  week-13-challenge-a/
-  ├── 📖 Documentación (3 guías completas)
-  ├── ⚙️  Manifests de Prometheus
-  ├── 📊 Manifests de Grafana
-  ├── 🔌 Manifests de Exporters
-  ├── 🛠️  Configuración auxiliar
-  └── 🚀 Scripts de automatización
-
-  Total: 20 archivos, completamente funcionales
-
-═══════════════════════════════════════════════════════════════════════
 
 🎓 COMANDOS BÁSICOS
 
@@ -175,27 +137,4 @@ del Challenge A de la Semana 13.
   # Limpiar todo
   kubectl delete namespace monitoring
 
-═══════════════════════════════════════════════════════════════════════
 
-📖 REFERENCIAS
-
-  - README_ChallengeA.md: Guía completa con teoría
-  - QUICKSTART.md: Inicio rápido de 3 pasos
-  - ESTRUCTURA_Y_USO.md: Casos de uso y referencia
-
-═══════════════════════════════════════════════════════════════════════
-
-🎉 TODO LISTO PARA EMPEZAR
-
-  Este setup está 100% funcional y listo para usar en tu Minikube.
-  Solo necesitas ejecutar ./deploy-all.sh y seguir QUICKSTART.md
-
-  ¡Buena suerte con tu Challenge A de la Semana 13! 🚀📊
-
-═══════════════════════════════════════════════════════════════════════
-
-Creado por: Abacus AI Agent
-Fecha: 13 de Mayo, 2026
-Para: Gaizka - GSX Práctica 2, Week 13, Challenge A
-
-═══════════════════════════════════════════════════════════════════════
