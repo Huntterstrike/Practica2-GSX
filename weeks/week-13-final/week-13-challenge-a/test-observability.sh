@@ -13,6 +13,12 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+stop_port_forward() {
+    local pid="$1"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+}
+
 # Test 1: Verificar que los pods están corriendo
 echo -e "${YELLOW}[Test 1/7]${NC} Verificando pods..."
 if kubectl get pods -n monitoring | grep -E "prometheus|grafana|exporter" | grep Running > /dev/null; then
@@ -34,10 +40,10 @@ if curl -s http://localhost:9090/-/healthy | grep -q "Prometheus"; then
     echo -e "${GREEN}✅ Prometheus está healthy${NC}"
 else
     echo -e "${RED}❌ Prometheus no responde${NC}"
-    kill $PF_PID 2>/dev/null || true
+    stop_port_forward "$PF_PID"
     exit 1
 fi
-kill $PF_PID 2>/dev/null || true
+stop_port_forward "$PF_PID"
 echo ""
 
 # Test 3: Verificar targets de Prometheus
@@ -51,10 +57,10 @@ if [ "$TARGETS" -gt 0 ]; then
     echo -e "${GREEN}✅ Prometheus tiene $TARGETS targets configurados${NC}"
 else
     echo -e "${RED}❌ No se encontraron targets${NC}"
-    kill $PF_PID 2>/dev/null || true
+    stop_port_forward "$PF_PID"
     exit 1
 fi
-kill $PF_PID 2>/dev/null || true
+stop_port_forward "$PF_PID"
 echo ""
 
 # Test 4: Verificar que Grafana está respondiendo
@@ -67,10 +73,10 @@ if curl -s http://localhost:3000/api/health | grep -q "ok"; then
     echo -e "${GREEN}✅ Grafana está healthy${NC}"
 else
     echo -e "${RED}❌ Grafana no responde${NC}"
-    kill $PF_PID 2>/dev/null || true
+    stop_port_forward "$PF_PID"
     exit 1
 fi
-kill $PF_PID 2>/dev/null || true
+stop_port_forward "$PF_PID"
 echo ""
 
 # Test 5: Verificar datasource de Prometheus en Grafana
@@ -80,17 +86,16 @@ PF_PID=$!
 sleep 3
 
 # Login y obtener datasources
-AUTH=$(echo -n "admin:admin" | base64)
-DATASOURCES=$(curl -s -H "Authorization: Basic $AUTH" http://localhost:3000/api/datasources)
+DATASOURCES=$(curl -s -u admin:admin http://localhost:3000/api/datasources)
 
 if echo "$DATASOURCES" | jq -e '.[] | select(.type=="prometheus")' > /dev/null; then
     echo -e "${GREEN}✅ Datasource de Prometheus configurado en Grafana${NC}"
 else
     echo -e "${RED}❌ No se encontró datasource de Prometheus${NC}"
-    kill $PF_PID 2>/dev/null || true
+    stop_port_forward "$PF_PID"
     exit 1
 fi
-kill $PF_PID 2>/dev/null || true
+stop_port_forward "$PF_PID"
 echo ""
 
 # Test 6: Verificar nginx-exporter
@@ -105,7 +110,7 @@ else
     echo -e "${YELLOW}⚠️  Nginx Exporter puede tener problemas conectando a nginx${NC}"
     echo "    Asegúrate de que nginx tiene /stub_status habilitado"
 fi
-kill $PF_PID 2>/dev/null || true
+stop_port_forward "$PF_PID"
 echo ""
 
 # Test 7: Verificar redis-exporter
@@ -120,7 +125,7 @@ else
     echo -e "${YELLOW}⚠️  Redis Exporter puede tener problemas conectando a Redis${NC}"
     echo "    Verifica que Redis está corriendo en el namespace default"
 fi
-kill $PF_PID 2>/dev/null || true
+stop_port_forward "$PF_PID"
 echo ""
 
 # Resumen
