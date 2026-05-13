@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'minikube'
+        environment: 'development'
+
+    # Configuración de reglas de alerta (opcional)
+    rule_files:
+      - '/etc/prometheus/alerts.yml'
+
+    # Configuración de scraping
+    scrape_configs:
+      # Prometheus se monitorea a sí mismo
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # Monitorear nginx a través de nginx-exporter
+      - job_name: 'nginx'
+        static_configs:
+          - targets: ['nginx-exporter:9113']
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: instance
+            replacement: 'nginx-loadbalancer'
+
+      # Monitorear redis a través de redis-exporter
+      - job_name: 'redis'
+        static_configs:
+          - targets: ['redis-exporter:9121']
+        relabel_configs:
+          - source_labels: [__address__]
+            target_label: instance
+            replacement: 'redis-cache'
+
+      # Monitorear tu aplicación simple-app
+      # Asume que expone métricas en /metrics puerto 8000
+      - job_name: 'simple-app'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - default
+        relabel_configs:
+          # Solo scrapear pods con label app=simple-app
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: simple-app
+          # Usar el puerto 8000 (ajusta si tu app usa otro puerto)
+          - source_labels: [__meta_kubernetes_pod_ip]
+            action: replace
+            target_label: __address__
+            replacement: $1:8000
+          # Añadir metadata útil
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+      # Scraping de métricas de Kubernetes (nodos, pods, etc.)
+      # Esto requiere permisos adicionales (ServiceAccount con RBAC)
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+      # Métricas de pods de Kubernetes
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: kubernetes_pod_name
+
+  # Archivo de reglas de alerta (opcional - para Challenge A Intermedio)
+  alerts.yml: |
+    groups:
+    - name: application_alerts
+      interval: 30s
+      rules:
+      # Alerta si la tasa de errores supera el 5%
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(app_requests_total{http_status=~"5.."}[5m]) 
+            / 
+            rate(app_requests_total[5m])
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: simple-app
+        annotations:
+          summary: "Alta tasa de errores detectada"
+          description: "La tasa de errores es {{ $value | humanizePercentage }} para {{ $labels.instance }}"
+
+      # Alerta si el uso de CPU supera el 80%
+      - alert: HighCPUUsage
+        expr: |
+          rate(container_cpu_usage_seconds_total{pod=~"simple-app.*"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: critical
+          component: simple-app
+        annotations:
+          summary: "Uso alto de CPU en pod {{ $labels.pod }}"
+          description: "El uso de CPU es {{ $value | humanizePercentage }}"
+
+      # Alerta si el uso de memoria supera el 90%
+      - alert: HighMemoryUsage
+        expr: |
+          container_memory_working_set_bytes{pod=~"simple-app.*"} 
+          / 
+          container_spec_memory_limit_bytes 
+          > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: simple-app
+        annotations:
+          summary: "Uso alto de memoria en pod {{ $labels.pod }}"
+          description: "El uso de memoria es {{ $value | humanizePercentage }} del límite"
+
+      # Alerta si un servicio está down
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Servicio {{ $labels.job }} está down"
+          description: "El target {{ $labels.instance }} no responde desde hace más de 2 minutos"
+
+      # Alerta si Redis tiene muchos comandos rechazados
+      - alert: RedisHighRejectedConnections
+        expr: rate(redis_rejected_connections_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Redis rechazando conexiones"
+          description: "Redis está rechazando {{ $value }} conexiones/segundo"
+
+      # Alerta si Nginx tiene alta latencia
+      - alert: NginxHighLatency
+        expr: nginx_http_request_duration_seconds{quantile="0.95"} > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: nginx
+        annotations:
+          summary: "Latencia alta en Nginx"
+          description: "El percentil 95 de latencia es {{ $value }}s"

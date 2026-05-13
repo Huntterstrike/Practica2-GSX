@@ -1,0 +1,54 @@
+# ConfigMap para habilitar stub_status en Nginx
+# IMPORTANTE: Aplica esto a tu deployment de nginx existente
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-stub-status-config
+  namespace: default
+data:
+  stub_status.conf: |
+    server {
+      listen 8080;
+      location /stub_status {
+        stub_status on;
+        access_log off;
+        allow 10.0.0.0/8;  # Permitir acceso desde el cluster
+        allow 172.16.0.0/12;
+        allow 192.168.0.0/16;
+        deny all;
+      }
+    }
+
+---
+# INSTRUCCIONES DE APLICACIÓN:
+# 
+# 1. Si tu nginx usa un ConfigMap para su configuración, edítalo para añadir:
+#    kubectl edit configmap nginx-config -n default
+#
+# 2. O añade este volumen y volumeMount a tu nginx-deployment.yml:
+#
+#    spec:
+#      containers:
+#      - name: nginx
+#        volumeMounts:
+#        - name: stub-status-config
+#          mountPath: /etc/nginx/conf.d/stub_status.conf
+#          subPath: stub_status.conf
+#      volumes:
+#      - name: stub-status-config
+#        configMap:
+#          name: nginx-stub-status-config
+#
+# 3. Luego reinicia nginx:
+#    kubectl rollout restart deployment/nginx -n default
+#
+# 4. Verifica que funciona:
+#    kubectl port-forward svc/nginx 8080:8080
+#    curl http://localhost:8080/stub_status
+#
+# Deberías ver output como:
+# Active connections: 1 
+# server accepts handled requests
+#  10 10 15 
+# Reading: 0 Writing: 1 Waiting: 0

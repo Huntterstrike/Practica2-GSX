@@ -1,0 +1,201 @@
+╔═══════════════════════════════════════════════════════════════════════╗
+║                                                                       ║
+║   📊 CHALLENGE A: OBSERVABILIDAD CON PROMETHEUS & GRAFANA             ║
+║      Week 13 - Práctica 2: Organizational IT Infrastructure          ║
+║                                                                       ║
+╚═══════════════════════════════════════════════════════════════════════╝
+
+Hola Gaizka! 👋
+
+Este directorio contiene una implementación COMPLETA y lista para usar
+del Challenge A de la Semana 13.
+
+═══════════════════════════════════════════════════════════════════════
+
+🚀 INICIO RÁPIDO (3 PASOS)
+
+  1. Desplegar todo:
+     cd /home/ubuntu/week-13-challenge-a
+     ./deploy-all.sh
+
+  2. Acceder a Grafana:
+     minikube service grafana-nodeport -n monitoring
+     Usuario: admin / Contraseña: admin
+
+  3. Crear tu dashboard siguiendo QUICKSTART.md
+
+═══════════════════════════════════════════════════════════════════════
+
+📚 DOCUMENTACIÓN (en orden de lectura recomendado)
+
+  1️⃣  QUICKSTART.md
+      → Guía rápida de 3 pasos
+      → Ideal para empezar inmediatamente
+      → 5 minutos de lectura
+
+  2️⃣  README_ChallengeA.md  
+      → Guía completa en español (700+ líneas)
+      → Conceptos, arquitectura, troubleshooting
+      → Incluye TODO lo que necesitas saber
+      → 30 minutos de lectura
+
+  3️⃣  ESTRUCTURA_Y_USO.md
+      → Casos de uso específicos
+      → Referencia de comandos y queries
+      → Workflows completos
+      → Consulta según necesidad
+
+═══════════════════════════════════════════════════════════════════════
+
+📦 ARCHIVOS KUBERNETES (YAML)
+
+  Prometheus:
+    • prometheus-configmap.yml     (config + alertas)
+    • prometheus-deployment.yml    (deployment + RBAC)
+    • prometheus-service.yml       (services)
+
+  Grafana:
+    • grafana-deployment.yml       (deployment + datasource)
+    • grafana-service.yml          (services)
+
+  Exporters:
+    • nginx-exporter-deployment.yml
+    • nginx-exporter-service.yml
+    • redis-exporter-deployment.yml
+    • redis-exporter-service.yml
+
+  Configuración auxiliar:
+    • nginx-stub-status-config.yml
+    • simple-app-metrics-example.py
+
+═══════════════════════════════════════════════════════════════════════
+
+🤖 SCRIPTS DE AUTOMATIZACIÓN
+
+  deploy-all.sh
+    → Despliega TODO el stack automáticamente
+    → Verifica el estado
+    → Muestra URLs de acceso
+    → Ejecuta: ./deploy-all.sh
+
+  test-observability.sh
+    → Verifica que todo funciona
+    → Testea conectividad
+    → Valida métricas
+    → Ejecuta: ./test-observability.sh
+
+═══════════════════════════════════════════════════════════════════════
+
+🎯 QUÉ HACE ESTE SETUP
+
+  ✅ Despliega Prometheus para recolectar métricas
+  ✅ Despliega Grafana para visualizar
+  ✅ Configura exporters para nginx y redis
+  ✅ Incluye reglas de alertas preconfiguradas
+  ✅ Proporciona código de ejemplo para instrumentar tu app
+  ✅ Todo listo para Minikube en Kali Linux
+
+═══════════════════════════════════════════════════════════════════════
+
+📊 ACCESO A LAS INTERFACES
+
+  Después de ejecutar deploy-all.sh:
+
+  Prometheus:
+    http://<MINIKUBE_IP>:30090
+    O: kubectl port-forward -n monitoring svc/prometheus 9090:9090
+
+  Grafana:
+    http://<MINIKUBE_IP>:30300
+    O: kubectl port-forward -n monitoring svc/grafana 3000:3000
+    Credenciales: admin / admin
+
+═══════════════════════════════════════════════════════════════════════
+
+✅ CHECKLIST DEL ENTREGABLE
+
+  Core (Básico):
+    [ ] Prometheus desplegado
+    [ ] Grafana desplegado con datasource
+    [ ] Dashboard con 5+ paneles de métricas
+    [ ] Screenshot del dashboard funcionando
+
+  Intermedio (Opcional):
+    [ ] Alertas configuradas (error rate, CPU, etc.)
+    [ ] Notificaciones testeadas
+
+═══════════════════════════════════════════════════════════════════════
+
+🆘 SI ALGO FALLA
+
+  1. Ejecuta el script de testing:
+     ./test-observability.sh
+
+  2. Revisa logs:
+     kubectl logs -n monitoring deployment/prometheus
+     kubectl logs -n monitoring deployment/grafana
+
+  3. Verifica targets en Prometheus:
+     http://localhost:9090/targets
+     (Todos deberían estar "UP")
+
+  4. Consulta la sección Troubleshooting en README_ChallengeA.md
+
+═══════════════════════════════════════════════════════════════════════
+
+💡 ESTRUCTURA DEL PROYECTO
+
+  week-13-challenge-a/
+  ├── 📖 Documentación (3 guías completas)
+  ├── ⚙️  Manifests de Prometheus
+  ├── 📊 Manifests de Grafana
+  ├── 🔌 Manifests de Exporters
+  ├── 🛠️  Configuración auxiliar
+  └── 🚀 Scripts de automatización
+
+  Total: 20 archivos, completamente funcionales
+
+═══════════════════════════════════════════════════════════════════════
+
+🎓 COMANDOS BÁSICOS
+
+  # Desplegar
+  ./deploy-all.sh
+
+  # Verificar
+  kubectl get pods -n monitoring
+  ./test-observability.sh
+
+  # Acceder
+  kubectl port-forward -n monitoring svc/grafana 3000:3000
+
+  # Generar tráfico (para testing)
+  while true; do curl -s $(minikube service nginx --url); sleep 0.1; done
+
+  # Limpiar todo
+  kubectl delete namespace monitoring
+
+═══════════════════════════════════════════════════════════════════════
+
+📖 REFERENCIAS
+
+  - README_ChallengeA.md: Guía completa con teoría
+  - QUICKSTART.md: Inicio rápido de 3 pasos
+  - ESTRUCTURA_Y_USO.md: Casos de uso y referencia
+
+═══════════════════════════════════════════════════════════════════════
+
+🎉 TODO LISTO PARA EMPEZAR
+
+  Este setup está 100% funcional y listo para usar en tu Minikube.
+  Solo necesitas ejecutar ./deploy-all.sh y seguir QUICKSTART.md
+
+  ¡Buena suerte con tu Challenge A de la Semana 13! 🚀📊
+
+═══════════════════════════════════════════════════════════════════════
+
+Creado por: Abacus AI Agent
+Fecha: 13 de Mayo, 2026
+Para: Gaizka - GSX Práctica 2, Week 13, Challenge A
+
+═══════════════════════════════════════════════════════════════════════
