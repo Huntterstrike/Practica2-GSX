@@ -134,16 +134,30 @@ GSX-Practica2/
 │       ├── CIDR_PLAN.md
 │       ├── INTERVIEW_PREP.md
 │       ├── reflection_GaizkaAlonsoMartinez.md
+│       ├── reflection_AlvaroPerez.md
 │       ├── verify_integration.py
-│       └── README.md
-│
-├── week-13-challenge-a/         # Challenge A: Observabilidad (Prometheus & Grafana)
-│   ├── grafana-deployment.yml
-│   ├── prometheus-deployment.yml
-│   ├── deploy-all.sh
-│   ├── test-observability.sh
-│   ├── README_ChallengeA.md
-│   └── QUICKSTART.md
+│       ├── README.md
+│       └── week-13-challenge-a/ # Challenge A: Observabilidad, dashboards y alerting
+│           ├── alertmanager-deployment.yml
+│           ├── alertmanager-service.yml
+│           ├── alert-receiver-deployment.yml
+│           ├── alert-receiver-service.yml
+│           ├── grafana-deployment.yml
+│           ├── grafana-service.yml
+│           ├── prometheus-configmap.yml
+│           ├── prometheus-deployment.yml
+│           ├── prometheus-service.yml
+│           ├── nginx-exporter-deployment.yml
+│           ├── nginx-exporter-service.yml
+│           ├── redis-exporter-deployment.yml
+│           ├── redis-exporter-service.yml
+│           ├── nginx-stub-status-config.yml
+│           ├── simple-app-observability.py
+│           ├── prepare-observability-targets.sh
+│           ├── deploy-all.sh
+│           ├── test-observability.sh
+│           ├── README_ChallengeA.md
+│           └── QUICKSTART.md
 │
 └── README_GENERAL.md            # ← Este documento
 ```
@@ -251,7 +265,7 @@ GSX-Practica2/
 - 💡 Defensa de decisiones técnicas
 
 📖 [README Week 13](weeks/week-13-final/README.md)  
-📖 [README Challenge A](week-13-challenge-a/README_ChallengeA.md)
+📖 [README Challenge A](weeks/week-13-final/week-13-challenge-a/README_ChallengeA.md)
 
 ---
 
