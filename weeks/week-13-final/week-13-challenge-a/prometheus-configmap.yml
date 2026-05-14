@@ -16,6 +16,12 @@ data:
     rule_files:
       - '/etc/prometheus/alerts.yml'
 
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+                - 'alertmanager:9093'
+
     # Configuración de scraping
     scrape_configs:
       # Prometheus se monitorea a sí mismo
@@ -122,7 +128,7 @@ data:
             / 
             rate(app_requests_total[5m])
           ) * 100 > 5
-        for: 5m
+        for: 30s
         labels:
           severity: warning
           component: simple-app
@@ -133,8 +139,8 @@ data:
       # Alerta si el uso de CPU supera el 80%
       - alert: HighCPUUsage
         expr: |
-          rate(container_cpu_usage_seconds_total{pod=~"simple-app.*"}[5m]) > 0.8
-        for: 5m
+          rate(container_cpu_usage_seconds_total{namespace="default",pod=~"simple-app.*"}[5m]) > 0.8
+        for: 30s
         labels:
           severity: critical
           component: simple-app
@@ -145,22 +151,19 @@ data:
       # Alerta si el uso de memoria supera el 90%
       - alert: HighMemoryUsage
         expr: |
-          container_memory_working_set_bytes{pod=~"simple-app.*"} 
-          / 
-          container_spec_memory_limit_bytes 
-          > 0.9
-        for: 5m
+          container_memory_working_set_bytes{namespace="default",pod=~"simple-app.*"} / 1024 / 1024 > 40
+        for: 30s
         labels:
           severity: warning
           component: simple-app
         annotations:
           summary: "Uso alto de memoria en pod {{ $labels.pod }}"
-          description: "El uso de memoria es {{ $value | humanizePercentage }} del límite"
+          description: "El uso de memoria supera los 40 MiB"
 
       # Alerta si un servicio está down
       - alert: ServiceDown
         expr: up == 0
-        for: 2m
+        for: 15s
         labels:
           severity: critical
         annotations:
@@ -178,13 +181,17 @@ data:
           summary: "Redis rechazando conexiones"
           description: "Redis está rechazando {{ $value }} conexiones/segundo"
 
-      # Alerta si Nginx tiene alta latencia
-      - alert: NginxHighLatency
-        expr: nginx_http_request_duration_seconds{quantile="0.95"} > 1
-        for: 5m
+      # Alerta si la app empieza a responder con latencia alta
+      - alert: HighRequestLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, endpoint) (rate(app_request_latency_seconds_bucket[5m]))
+          ) > 0.5
+        for: 30s
         labels:
           severity: warning
-          component: nginx
+          component: simple-app
         annotations:
-          summary: "Latencia alta en Nginx"
-          description: "El percentil 95 de latencia es {{ $value }}s"
+          summary: "Latencia alta en la aplicación"
+          description: "El percentil 95 de latencia supera 0.5s"

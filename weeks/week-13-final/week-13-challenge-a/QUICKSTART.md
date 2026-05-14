@@ -1,273 +1,131 @@
-# Quick Start - Challenge A
+# Quick Start - Week 13 Challenge A
 
-## Despliegue rapido en 3 pasos
+Esta guia recoge el proceso completo que hemos usado para validar Challenge A de la week 13:
 
-### Paso 1: Desplegar todo automaticamente
-```bash
-cd /home/ubuntu/week-13-challenge-a
-./deploy-all.sh
-```
+- core/basic
+- intermediate/alerting
 
-Este script hace todo lo necesario para la observabilidad de la week 13:
-- despliega Prometheus
-- despliega Grafana con el datasource ya configurado
-- despliega `nginx-exporter`
-- despliega `redis-exporter`
-- prepara `nginx` y `simple-app` para exponer metricas sin editar archivos de otras weeks
+## 0. Que valida esta guia
 
-### Paso 2: Acceder a las interfaces
+Al terminar, tendras validado todo esto:
 
-**Prometheus**
-```bash
-# Opcion 1: NodePort
-minikube ip
-# Visita: http://<MINIKUBE_IP>:30090
+- stack base de `nginx`, `simple-app` y `redis` funcionando en Kubernetes
+- Prometheus desplegado y recolectando metricas
+- Grafana desplegado y conectado a Prometheus
+- dashboard con las metricas pedidas en el enunciado
+- trafico real y metricas moviendose
+- reglas de alerta cargadas en Prometheus
+- Alertmanager desplegado
+- notificaciones funcionando mediante webhook interno a `alert-receiver`
 
-# Opcion 2: Port-forward
-kubectl port-forward -n monitoring svc/prometheus 9090:9090
-# Visita: http://localhost:9090
-```
+## 1. Requisitos
 
-**Grafana**
-```bash
-# Opcion 1: NodePort
-# Visita: http://<MINIKUBE_IP>:30300
+Necesitas:
 
-# Opcion 2: Port-forward
-kubectl port-forward -n monitoring svc/grafana 3000:3000
-# Visita: http://localhost:3000
-# Credenciales: admin / admin
-```
-
-### Paso 3: Verificar que todo funciona
-```bash
-./test-observability.sh
-```
-
----
-
-## Proceso manual completo
-
-Usa esta seccion si no quieres ejecutar `./deploy-all.sh` y prefieres hacer el proceso completo a mano.
-
-### 0. Requisitos previos
-
-Necesitas tener ya desplegado el stack base de las weeks anteriores en el namespace `default`:
-- `deployment/nginx`
-- `deployment/simple-app`
-- `service/nginx`
-- `service/simple-app`
-- `service/redis`
-
-Tambien necesitas:
-- `kubectl`
 - `minikube`
+- `kubectl`
+- `bash`
 - `curl`
 - `jq`
 
-Comprueba acceso al cluster:
+Trabaja desde la raiz del repo:
 
 ```bash
+cd /c/Users/alvar/OneDrive/Desktop/UNI/3r_Curs/2n_quatri/GSX/Practiques/Practica2-GSX
+```
+
+## 2. Arrancar Minikube
+
+```bash
+minikube start
 kubectl cluster-info
 ```
 
-Trabaja siempre desde:
+Si `kubectl cluster-info` falla, no sigas hasta arreglar eso.
+
+## 3. Construir las imagenes base dentro de Minikube
+
+Estas dos imagenes son las que usa el stack base:
+
+```bash
+minikube image build -t nginx-gsx:latest weeks/week-08-docker/nginx
+minikube image build -t simple-app-gsx:latest -f weeks/week-11-iac/docker/simple-app.Dockerfile .
+```
+
+## 4. Desplegar el stack base de la week 10
+
+La observabilidad de la week 13 esta preparada para trabajar sobre el stack base en el namespace `default`.
+
+```bash
+kubectl apply -f weeks/week-10-k8s/kubernetes
+```
+
+Espera a que todo quede listo:
+
+```bash
+kubectl rollout status deployment/simple-app --timeout=180s
+kubectl rollout status deployment/nginx --timeout=180s
+kubectl rollout status statefulset/redis --timeout=180s
+kubectl get pods -n default
+```
+
+Debes ver en `Running`:
+
+- `nginx`
+- `simple-app`
+- `redis-0`
+
+## 5. Desplegar observabilidad y alerting de la week 13
 
 ```bash
 cd weeks/week-13-final/week-13-challenge-a
+bash ./deploy-all.sh
 ```
 
-### 1. Preparar Nginx para exponer `/stub_status`
+Este script hace todo esto:
 
-Aplica el ConfigMap auxiliar:
+- prepara `nginx` para exponer `/stub_status`
+- inyecta una version instrumentada de `simple-app`
+- despliega Prometheus
+- despliega `nginx-exporter`
+- despliega `redis-exporter`
+- despliega Grafana
+- despliega Alertmanager
+- despliega `alert-receiver`
+- reinicia Prometheus para cargar reglas y alerting
 
-```bash
-kubectl apply -f nginx-stub-status-config.yml
-```
-
-Parchea el deployment existente de `nginx` para:
-- montar `stub_status.conf`
-- abrir un listener en el puerto `8080`
-
-```bash
-kubectl patch deployment nginx -n default --type=strategic -p "$(cat <<'EOF'
-spec:
-  template:
-    spec:
-      volumes:
-      - name: stub-status-config
-        configMap:
-          name: nginx-stub-status-config
-      containers:
-      - name: nginx
-        ports:
-        - containerPort: 8080
-          name: stub-status
-          protocol: TCP
-        volumeMounts:
-        - name: stub-status-config
-          mountPath: /etc/nginx/conf.d/stub_status.conf
-          subPath: stub_status.conf
-EOF
-)"
-```
-
-Expone el puerto `8080` tambien en el `service/nginx`:
-
-```bash
-kubectl patch service nginx -n default --type=strategic -p "$(cat <<'EOF'
-spec:
-  ports:
-  - name: stub-status
-    port: 8080
-    targetPort: 8080
-    protocol: TCP
-EOF
-)"
-```
-
-Espera a que reinicie y verifica el endpoint:
-
-```bash
-kubectl rollout status deployment/nginx -n default
-kubectl port-forward svc/nginx -n default 8080:8080
-curl http://localhost:8080/stub_status
-```
-
-Deberias ver algo parecido a:
-
-```text
-Active connections: 1
-server accepts handled requests
-...
-```
-
-### 2. Preparar `simple-app` para exponer `/metrics`
-
-En este repo no hace falta reconstruir la imagen base. La week 13 ya incluye `simple-app-observability.py`, que se inyecta como `ConfigMap` sobre el deployment existente.
-
-Crea el ConfigMap:
-
-```bash
-kubectl create configmap simple-app-observability \
-  --from-file=app.py=./simple-app-observability.py \
-  -n default \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-Parchea el deployment para arrancar con ese archivo:
-
-```bash
-kubectl patch deployment simple-app -n default --type=strategic -p "$(cat <<'EOF'
-spec:
-  template:
-    spec:
-      volumes:
-      - name: observability-app
-        configMap:
-          name: simple-app-observability
-      containers:
-      - name: simple-app
-        command:
-        - python
-        - /opt/observability/app.py
-        volumeMounts:
-        - name: observability-app
-          mountPath: /opt/observability/app.py
-          subPath: app.py
-EOF
-)"
-```
-
-Espera al rollout y verifica el endpoint:
-
-```bash
-kubectl rollout status deployment/simple-app -n default
-kubectl port-forward svc/simple-app -n default 5000:5000
-curl http://localhost:5000/metrics
-```
-
-### 3. Crear el namespace `monitoring`
-
-```bash
-kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
-```
-
-### 4. Desplegar Prometheus
-
-```bash
-kubectl apply -f prometheus-configmap.yml -n monitoring
-kubectl apply -f prometheus-deployment.yml -n monitoring
-kubectl apply -f prometheus-service.yml -n monitoring
-kubectl rollout status deployment/prometheus -n monitoring
-```
-
-### 5. Desplegar Exporters
-
-```bash
-kubectl apply -f nginx-exporter-deployment.yml -n monitoring
-kubectl apply -f nginx-exporter-service.yml -n monitoring
-
-kubectl apply -f redis-exporter-deployment.yml -n monitoring
-kubectl apply -f redis-exporter-service.yml -n monitoring
-
-kubectl rollout status deployment/nginx-exporter -n monitoring
-kubectl rollout status deployment/redis-exporter -n monitoring
-```
-
-### 6. Desplegar Grafana
-
-```bash
-kubectl apply -f grafana-deployment.yml -n monitoring
-kubectl apply -f grafana-service.yml -n monitoring
-kubectl rollout status deployment/grafana -n monitoring
-```
-
-Si reaplicas cambios sobre un stack ya desplegado, reinicia Prometheus y Grafana para forzar la recarga:
-
-```bash
-kubectl rollout restart deployment/prometheus -n monitoring
-kubectl rollout restart deployment/grafana -n monitoring
-kubectl rollout status deployment/prometheus -n monitoring
-kubectl rollout status deployment/grafana -n monitoring
-```
-
-### 7. Verificar el estado final
-
-Comprueba los pods:
+Comprueba el resultado:
 
 ```bash
 kubectl get pods -n monitoring
 ```
 
-Abre Prometheus y revisa `Status -> Targets`:
+Debes ver en `Running`:
+
+- `prometheus`
+- `grafana`
+- `nginx-exporter`
+- `redis-exporter`
+- `alertmanager`
+- `alert-receiver`
+
+## 6. Abrir las interfaces y logs
+
+Abre una terminal por comando y deja cada proceso corriendo.
+
+### 6.1 Prometheus
 
 ```bash
 kubectl port-forward -n monitoring svc/prometheus 9090:9090
 ```
 
-Los targets importantes deberian quedar en `UP`:
-- `prometheus`
-- `redis`
-- `nginx`
-- `simple-app`
-- `kubernetes-nodes`
+Abre:
 
-Lanza despues el test:
-
-```bash
-./test-observability.sh
+```text
+http://localhost:9090
 ```
 
----
-
-## Crear tu dashboard en Grafana
-
-Esta es la parte que suele costar mas si no conoces bien la UI de Grafana 10. Sigue estos pasos tal cual.
-
-### 1. Abrir Grafana
-
-Si aun no lo tienes abierto:
+### 6.2 Grafana
 
 ```bash
 kubectl port-forward -n monitoring svc/grafana 3000:3000
@@ -279,455 +137,387 @@ Abre:
 http://localhost:3000
 ```
 
-Credenciales por defecto:
-- usuario: `admin`
-- password: `admin`
+Credenciales:
 
-Importante:
-- para que `./test-observability.sh` siga funcionando, no cambies la password antes de pasar el test
-- si ya la cambiaste y el test falla por autenticacion, reiniciar `deployment/grafana` devuelve este setup a `admin/admin`
+```text
+admin / admin
+```
 
-### 2. Encontrar el datasource de Prometheus
+### 6.3 Alertmanager
 
-En Grafana 10 la ruta normal es:
+```bash
+kubectl port-forward -n monitoring svc/alertmanager 9093:9093
+```
 
-- menu lateral izquierdo
-- `Connections`
-- `Data sources`
-- `Prometheus`
+Abre:
 
-Si no encuentras `Connections`, usa el buscador superior de Grafana y escribe `data sources`.
+```text
+http://localhost:9093
+```
 
-Dentro del datasource comprueba:
-- Name: `Prometheus`
-- URL: `http://prometheus:9090`
-- `Default` activado
+### 6.4 Logs del receptor de alertas
 
-Pulsa:
+```bash
+kubectl logs -n monitoring deployment/alert-receiver -f
+```
 
-- `Save & test`
+### 6.5 Acceso directo a simple-app para pruebas de latencia y errores
 
-Deberias ver un mensaje tipo:
+```bash
+kubectl port-forward -n default svc/simple-app 5000:5000
+```
+
+## 7. Validar Prometheus para el core
+
+### 7.1 Targets
+
+En Prometheus ve a:
+
+- `Status -> Targets`
+
+Estos jobs deben estar en `UP`:
+
+- `prometheus`
+- `redis`
+- `nginx`
+- `simple-app`
+- `kubernetes-nodes`
+
+### 7.2 Queries minimas
+
+En la pestana `Graph`, ejecuta una por una:
+
+```promql
+up
+```
+
+```promql
+app_requests_total
+```
+
+```promql
+nginx_http_requests_total
+```
+
+```promql
+container_memory_working_set_bytes{namespace="default",pod=~"simple-app.*"}
+```
+
+Resultado esperado:
+
+- `up` devuelve varias series con valor `1`
+- `app_requests_total` devuelve datos
+- `nginx_http_requests_total` devuelve datos
+- `container_memory_working_set_bytes{...}` devuelve datos
+
+Si alguna sale vacia, no pases a Grafana todavia.
+
+## 8. Validar el datasource en Grafana
+
+En Grafana:
+
+- `Connections -> Data sources -> Prometheus`
+- pulsa `Save & test`
+
+Debe salir algo como:
 
 ```text
 data source is working
 ```
 
-### 3. Crear un dashboard nuevo
+## 9. Crear el dashboard de Grafana
 
-La ruta mas clara es:
+La UI que vas a usar es:
 
-- menu lateral izquierdo
-- `Dashboards`
-- `New`
-- `New dashboard`
-- `Add visualization`
+- `Dashboards -> New -> New dashboard -> Add visualization`
+- elige `Prometheus`
 
-Cuando te pregunte datasource, elige:
+Dentro del editor del panel veras:
 
-- `Prometheus`
-
-Se abrira el editor de panel. Las zonas importantes son:
-
-- centro: la grafica de previsualizacion
-- parte inferior: la query PromQL
-- panel derecho: `Panel options`, `Standard options`, `Legend`, etc.
+- centro: previsualizacion
+- parte inferior: query PromQL
+- barra derecha: `Visualization`, `Panel options`, etc.
 - arriba a la derecha: `Run queries` y `Apply`
 
-Consejo:
-- cada vez que termines un panel, pulsa `Apply`
-- si no pulsas `Apply`, el panel no se guarda en el dashboard
+Cada vez que crees o edites un panel:
 
-### 4. Crear primero un panel de diagnostico
+1. pega la query
+2. pulsa `Run queries`
+3. ajusta `Visualization`
+4. pon el titulo en `Panel options`
+5. pulsa `Apply`
 
-Antes de hacer el dashboard final, crea un panel simple para comprobar que Grafana recibe datos.
+## 10. Crear los paneles del core
 
-#### Panel 0: Targets UP
+### 10.1 Panel de diagnostico: Targets UP
 
-En el editor:
-
+- `Visualization`: `Table`
 - Titulo: `Targets UP`
-- Visualization: `Stat`
 - Query:
 
 ```promql
 up
 ```
 
-Pulsa:
+Pulsa `Apply`.
 
-- `Run queries`
+### 10.2 Generar trafico continuo
 
-Si todo esta bien, veras varios valores `1`.
-
-Luego pulsa:
-
-- `Apply`
-
-Esto te devuelve al dashboard.
-
-### 5. Crear los paneles del dashboard final
-
-Para cada panel nuevo:
-
-- arriba a la derecha en el dashboard
-- `Add`
-- `Visualization`
-- elige `Prometheus`
-
-#### Panel 1: Request Rate
-
-Usa:
-
-```promql
-rate(app_requests_total[5m])
-```
-
-Configuralo asi:
-- Titulo: `Request Rate`
-- Visualization: `Time series`
-- Unit: `reqps` si te aparece, o deja `short`
-- Legend: muestra `{{endpoint}} {{http_status}}`
-
-Que deberias ver:
-- una linea moviendose cuando generas trafico
-
-Si ves `No data`:
-- genera trafico con `curl`
-- espera 30-60 segundos
-
-#### Panel 2: Request Latency P95
-
-Usa esta query:
-
-```promql
-histogram_quantile(0.95, sum by (le, endpoint) (rate(app_request_latency_seconds_bucket[5m])))
-```
-
-Configuralo asi:
-- Titulo: `Request Latency P95`
-- Visualization: `Time series`
-- Unit: `s`
-- Legend: `{{endpoint}}`
-
-Que deberias ver:
-- latencia baja para `/`
-- latencia alta si llamas a `/slow`
-
-#### Panel 3: CPU Usage de simple-app
-
-Usa esta query:
-
-```promql
-rate(container_cpu_usage_seconds_total{namespace="default",pod=~"simple-app.*"}[5m])
-```
-
-Configuralo asi:
-- Titulo: `CPU Usage - simple-app`
-- Visualization: `Time series`
-- Unit: `percent (0.0-1.0)` o `short`
-- Legend: `{{pod}}`
-
-Importante:
-- filtramos `namespace="default"` porque en tu cluster puede haber otros `simple-app` de otras weeks
-
-#### Panel 4: Memory Usage de simple-app
-
-Usa esta query:
-
-```promql
-container_memory_working_set_bytes{namespace="default",pod=~"simple-app.*"} / 1024 / 1024
-```
-
-Configuralo asi:
-- Titulo: `Memory Usage - simple-app`
-- Visualization: `Time series`
-- Unit: `MiB`
-- Legend: `{{pod}}`
-
-Que deberias ver:
-- una linea con el consumo de memoria del pod
-
-#### Panel 5: Redis Commands
-
-Usa:
-
-```promql
-rate(redis_commands_processed_total[5m])
-```
-
-Configuralo asi:
-- Titulo: `Redis Commands`
-- Visualization: `Time series`
-- Unit: `ops`
-- Legend: `{{instance}}`
-
-Que deberias ver:
-- actividad cuando `simple-app` recibe peticiones y toca Redis
-
-#### Panel 6: Nginx Requests
-
-Usa:
-
-```promql
-rate(nginx_http_requests_total[5m])
-```
-
-Configuralo asi:
-- Titulo: `Nginx Requests`
-- Visualization: `Time series`
-- Unit: `reqps` si esta disponible
-- Legend: `{{instance}}`
-
-Que deberias ver:
-- actividad cuando el trafico pasa por `nginx`
-
-#### Panel 7: Error Rate
-
-Usa:
-
-```promql
-rate(app_requests_total{http_status=~"5.."}[5m]) / rate(app_requests_total[5m]) * 100
-```
-
-Configuralo asi:
-- Titulo: `Error Rate`
-- Visualization: `Time series`
-- Unit: `percent (0-100)`
-
-Opcional:
-- en `Thresholds`, marca amarillo a partir de `1`
-- marca rojo a partir de `5`
-
-#### Panel 8: Estado de servicios
-
-Este panel ayuda mucho para la demo y para depurar.
-
-Usa:
-
-```promql
-up
-```
-
-Configuralo asi:
-- Titulo: `Service Status`
-- Visualization: `Table` o `Stat`
-
-### 6. Orden recomendado del dashboard
-
-Una distribucion sencilla que queda bien:
-
-- fila 1: `Targets UP`, `Error Rate`
-- fila 2: `Request Rate`, `Request Latency P95`
-- fila 3: `CPU Usage - simple-app`, `Memory Usage - simple-app`
-- fila 4: `Redis Commands`, `Nginx Requests`
-
-Para mover paneles:
-
-- vuelve al dashboard
-- arrastra cada panel desde la cabecera
-
-### 7. Ajustes generales del dashboard
-
-En la esquina superior derecha del dashboard:
-
-- Time range: `Last 15 minutes`
-- Refresh: `5s`
-
-Luego pulsa guardar:
-
-- icono `Save dashboard`
-- Name: `GreenDevCorp Monitoring`
-- Folder: `General`
-
-### 8. Como generar datos para que se vean las graficas
-
-Abre otra terminal y lanza trafico continuo:
+Abre otra terminal y deja esto corriendo:
 
 ```bash
 while true; do curl -s $(minikube service nginx --url) > /dev/null; sleep 0.1; done
 ```
 
-Si quieres provocar paneles concretos:
+Muchas queries de tipo `rate(...)` no se mueven sin trafico.
 
-- latencia:
+### 10.3 Request Rate
+
+- `Visualization`: `Time series`
+- Titulo: `Request Rate`
+- Query:
+
+```promql
+rate(app_requests_total[5m])
+```
+
+Si quieres distinguir lineas, usa esta leyenda:
+
+```text
+{{endpoint}} {{http_status}}
+```
+
+Es normal ver varias lineas si hay distintas combinaciones de `endpoint` y `http_status`.
+
+### 10.4 Nginx Requests
+
+- `Visualization`: `Time series`
+- Titulo: `Nginx Requests`
+- Query:
+
+```promql
+rate(nginx_http_requests_total[5m])
+```
+
+### 10.5 Request Latency P95
+
+- `Visualization`: `Time series`
+- Titulo: `Request Latency P95`
+- Query:
+
+```promql
+histogram_quantile(0.95, sum by (le, endpoint) (rate(app_request_latency_seconds_bucket[5m])))
+```
+
+### 10.6 CPU Usage - simple-app
+
+- `Visualization`: `Time series`
+- Titulo: `CPU Usage - simple-app`
+- Query:
+
+```promql
+rate(container_cpu_usage_seconds_total{namespace="default",pod=~"simple-app.*"}[5m])
+```
+
+### 10.7 Memory Usage - simple-app
+
+- `Visualization`: `Time series`
+- Titulo: `Memory Usage - simple-app`
+- Query:
+
+```promql
+container_memory_working_set_bytes{namespace="default",pod=~"simple-app.*"} / 1024 / 1024
+```
+
+Si Grafana te deja elegir unidad, usa `MiB`.
+
+### 10.8 Error Rate
+
+- `Visualization`: `Time series`
+- Titulo: `Error Rate`
+- Query:
+
+```promql
+rate(app_requests_total{http_status=~"5.."}[5m]) / rate(app_requests_total[5m]) * 100
+```
+
+Nota importante:
+
+- este panel no es un contador acumulado
+- es una tasa/porcentaje sobre una ventana movil
+- por eso la grafica puede subir y bajar
+
+Si al principio sale `No data`, es normal si aun no has provocado errores `5xx`.
+
+## 11. Hacer visibles latencia y errores
+
+### 11.1 Forzar latencia
+
+En una terminal:
 
 ```bash
-kubectl port-forward svc/simple-app -n default 5000:5000
 curl http://localhost:5000/slow
 ```
 
-- errores:
+Con esto deberias ver movimiento en `Request Latency P95`.
+
+### 11.2 Forzar errores
+
+En una terminal:
 
 ```bash
-kubectl port-forward svc/simple-app -n default 5000:5000
-curl -i http://localhost:5000/error
+for i in {1..20}; do curl -i http://localhost:5000/error; sleep 0.2; done
 ```
 
-### 9. Si no encuentras algo en la UI
+Con esto deberias ver movimiento en `Error Rate`.
 
-Casos comunes:
+## 12. Ajustes finales del dashboard
 
-- no encuentras `Data sources`
-  - usa el buscador superior y escribe `data sources`
+En la esquina superior derecha del dashboard:
 
-- no encuentras `Add visualization`
-  - entra en `Dashboards`
-  - abre tu dashboard
-  - arriba a la derecha usa `Add`
+- `Last 15 minutes`
+- `Refresh 5s`
 
-- haces una query y no sale nada
-  - pulsa `Run queries`
-  - comprueba `Status -> Targets` en Prometheus
-  - genera trafico y espera unos segundos
+Guarda el dashboard:
 
-- ves datos de pods de otras weeks
-  - asegúrate de usar `namespace="default"` en CPU y memoria
+- `Save dashboard`
+- nombre recomendado: `GreenDevCorp Monitoring`
 
-### 10. Checklist rapido de Grafana
+Importante:
 
-Antes de hacer la captura final:
+- si recargas la pagina, el dashboard guardado sigue ahi
+- si se recrea el pod de Grafana, el dashboard se pierde porque el despliegue usa `emptyDir`
 
-- [ ] el datasource `Prometheus` responde `Save & test`
-- [ ] el panel `Targets UP` muestra valores `1`
-- [ ] `Request Rate` se mueve al generar trafico
-- [ ] `Nginx Requests` se mueve al generar trafico
-- [ ] `Redis Commands` se mueve al generar trafico
-- [ ] `CPU` y `Memory` muestran datos del pod `simple-app`
-- [ ] el dashboard esta guardado
-- [ ] el time range y el refresh se ven en la captura
+## 13. Validar el intermediate en Prometheus
 
----
-
-## Notas sobre `simple-app`
-
-En este repo tienes dos opciones:
-
-1. Usar el overlay de la week 13
-   - es lo que hacen `deploy-all.sh` y el proceso manual de esta guia
-   - no reconstruye la imagen base
-   - no modifica archivos de otras weeks
-
-2. Instrumentar tu propia aplicacion de forma nativa
-   - usa `simple-app-metrics-example.py` como referencia
-   - esta opcion es util si quieres integrar Prometheus dentro del codigo fuente real de la app
-
----
-
-## Generar trafico para testing
-
-### Opcion 1: Loop con curl
-```bash
-NGINX_URL=$(minikube service nginx --url)
-while true; do
-  curl -s "$NGINX_URL" > /dev/null
-  sleep 0.1
-done
-```
-
-### Opcion 2: Load testing con hey
-```bash
-go install github.com/rakyll/hey@latest
-hey -z 60s -c 10 "$(minikube service nginx --url)"
-```
-
----
-
-## Screenshot para el entregable
-
-1. Genera trafico durante 2-3 minutos
-2. Abre Grafana con tu dashboard
-3. Espera a que todos los paneles muestren datos
-4. Toma una captura mostrando:
-   - paneles con graficas
-   - metricas actualizandose
-   - time range visible
-   - fecha/hora actual
-
----
-
-## Si algo falla
-
-### Ver logs de Prometheus
-```bash
-kubectl logs -n monitoring deployment/prometheus -f
-```
-
-### Ver logs de Grafana
-```bash
-kubectl logs -n monitoring deployment/grafana -f
-```
-
-### Ver logs de Nginx Exporter
-```bash
-kubectl logs -n monitoring deployment/nginx-exporter -f
-```
-
-### Ver targets en Prometheus
-```bash
-kubectl port-forward -n monitoring svc/prometheus 9090:9090
-```
-
-Luego entra en:
+Abre:
 
 ```text
-http://localhost:9090/targets
+http://localhost:9090/alerts
 ```
 
-### Validar de nuevo el stack
+Debes ver estas reglas:
+
+- `HighErrorRate`
+- `HighCPUUsage`
+- `HighMemoryUsage`
+- `ServiceDown`
+- `RedisHighRejectedConnections`
+- `HighRequestLatency`
+
+## 14. Probar una alerta real de punta a punta
+
+La validacion principal del intermediate la haremos con `HighErrorRate`.
+
+### 14.1 Deja abiertas estas tres cosas
+
+- `http://localhost:9090/alerts`
+- `http://localhost:9093`
+- la terminal con:
+
+```bash
+kubectl logs -n monitoring deployment/alert-receiver -f
+```
+
+### 14.2 Disparar errores
+
+Con el port-forward de `simple-app` aun corriendo, ejecuta:
+
+```bash
+for i in {1..50}; do curl -s -o /dev/null http://localhost:5000/error; sleep 1; done
+```
+
+### 14.3 Que debes ver
+
+En Prometheus:
+
+- `HighErrorRate` pasa por `inactive -> pending -> firing`
+
+En Alertmanager:
+
+- la alerta aparece en la UI de `http://localhost:9093`
+
+En la terminal de logs:
+
+```text
+[alert-receiver] /alerts HighErrorRate=firing
+```
+
+Con esto queda validado:
+
+- la regla existe
+- Prometheus la evalua
+- Alertmanager la recibe
+- la notificacion sale por webhook
+- el receptor la procesa
+
+## 15. Que significa la notificacion en este proyecto
+
+En esta practica, la notificacion del intermediate queda implementada asi:
+
+- Prometheus envia la alerta a Alertmanager
+- Alertmanager envia un webhook a `alert-receiver`
+- `alert-receiver` deja la evidencia en logs
+
+No estamos usando email externo. La notificacion funcional de esta entrega es por webhook interno y logs.
+
+## 16. Ejecutar el test automatizado
+
+Al final, ejecuta:
+
 ```bash
 ./test-observability.sh
 ```
 
-### Reiniciar solo monitoring
-```bash
-kubectl delete namespace monitoring
-./deploy-all.sh
+Esto sirve como smoke test del stack, pero no sustituye la validacion manual del dashboard ni la prueba real de alertas.
+
+## 17. Evidencias para la entrega
+
+Minimo recomendable:
+
+1. Captura de Grafana con:
+   - `Request Rate`
+   - `Request Latency P95`
+   - `CPU Usage - simple-app`
+   - `Memory Usage - simple-app`
+   - `Error Rate`
+   - `Last 15 minutes`
+   - `Refresh 5s`
+
+2. Captura de Prometheus en:
+   - `Status -> Targets`
+   - o `Alerts`
+
+3. Captura de Alertmanager mostrando la alerta
+
+4. Evidencia de logs del receptor:
+
+```text
+[alert-receiver] /alerts HighErrorRate=firing
 ```
 
----
+## 18. Checklist final
 
-## Checklist del entregable
+Antes de dar Challenge A por cerrado, revisa:
 
-Antes de marcar Challenge A como completo:
+- [ ] `nginx`, `simple-app` y `redis` estan en `Running`
+- [ ] `prometheus`, `grafana`, `nginx-exporter`, `redis-exporter`, `alertmanager` y `alert-receiver` estan en `Running`
+- [ ] `prometheus`, `redis`, `nginx`, `simple-app` y `kubernetes-nodes` estan en `UP`
+- [ ] las queries base en Prometheus devuelven datos
+- [ ] el datasource de Grafana responde `Save & test`
+- [ ] el dashboard esta guardado
+- [ ] el dashboard muestra request rate, latency, CPU, memory y error rate
+- [ ] hay trafico real y las metricas se mueven
+- [ ] `HighErrorRate` pasa a `firing`
+- [ ] Alertmanager muestra la alerta
+- [ ] `alert-receiver` recibe la notificacion
+- [ ] `./test-observability.sh` pasa
 
-- [ ] Prometheus desplegado y accesible
-- [ ] Grafana desplegado con datasource conectado
-- [ ] `prometheus`, `redis`, `nginx`, `simple-app` y `kubernetes-nodes` en `UP`
-- [ ] Dashboard creado con al menos 5 paneles utiles
-- [ ] Metricas actualizandose en tiempo real
-- [ ] Screenshot del dashboard funcionando
-- [ ] Test `./test-observability.sh` pasando
+## 19. Resumen corto
 
----
+Si has seguido toda esta guia y todo responde como se espera, puedes defender honestamente que tienes:
 
-## Referencias rapidas
+- Challenge A core/basic completado
+- Challenge A intermediate completado
 
-**PromQL basico**
-```promql
-up
-rate(metric_name[5m])
-sum by (label_name) (metric_name)
-histogram_quantile(0.95, rate(metric_bucket[5m]))
-topk(5, metric_name)
-```
-
-**Comandos utiles**
-```bash
-kubectl get pods -n monitoring
-kubectl get svc -n monitoring
-kubectl logs -n monitoring deployment/prometheus -f
-kubectl logs -n monitoring deployment/grafana -f
-kubectl describe pod -n monitoring <POD_NAME>
-```
-
----
-
-## Listo
-
-Si completaste todos los pasos, ya tienes un stack de observabilidad funcionando para la week 13.
-
-Siguientes challenges:
-- Challenge B: Full Integration Test
-- Challenge C: Documentation
-- Challenge D: Interview Prep
+En este proyecto, el intermediate queda demostrado con reglas reales, Alertmanager y notificacion por webhook interno con evidencia en logs.
