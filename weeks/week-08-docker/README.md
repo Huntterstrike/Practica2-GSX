@@ -30,6 +30,7 @@ There was no real Assignment 1 website content in this repository, so `index.htm
 Dockerfile choices:
 
 - **Base image**: `nginx:latest`, as required by the assignment.
+- **Multistage build**: a lightweight Alpine builder stage validates and stages the static assets before the final Nginx runtime stage.
 - **Custom config**: `default.conf` replaces the default server block.
 - **Static content**: `index.html` is copied into the Nginx document root.
 - **Runtime user**: the container runs as the built-in non-root `nginx` user.
@@ -106,6 +107,7 @@ It uses Python's standard library, so there are no external application dependen
 Dockerfile choices:
 
 - **Base image**: `python:3.12-alpine`, chosen because it is small and already includes Python.
+- **Multistage build**: a builder stage validates `app.py` with `py_compile`, and the final stage copies only the validated runtime file.
 - **Application runtime**: Python standard library `http.server`.
 - **Working directory**: `/app`.
 - **Runtime user**: a dedicated non-root `app` user runs the process.
@@ -256,14 +258,79 @@ COPY --chown=app:app ...
 
 This avoids unnecessary ownership changes after copying files.
 
-### Multistage Build Decision
+### Multistage Build Implementation
 
-Multistage builds were considered but not used because neither image has a build phase:
+Both images use a multistage build:
 
-- Nginx only serves static files.
-- The Python app has no compiled artifacts and no external dependencies.
+- `nginx/Dockerfile`
+  - stage `builder`: copies `default.conf` and `index.html`, validates the expected page marker, and stages only the runtime files
+  - final stage: starts from `nginx:latest` and copies only the staged assets into the runtime image
+- `simple-app/Dockerfile`
+  - stage `builder`: copies `app.py` and validates it with `python -m py_compile`
+  - final stage: starts from `python:3.12-alpine` and copies only the validated runtime file
 
-Using a multistage build here would add complexity without reducing the final runtime content.
+This gives us a concrete intermediate optimization to demonstrate:
+
+- build-time validation happens in the builder stage
+- the final runtime stage only receives the files it needs to run
+- the builder stage exists in the Dockerfile but its temporary filesystem does not become part of the final runtime image
+
+### How to Test the Multistage Build Explicitly
+
+Build the final runtime images:
+
+```bash
+cd weeks/week-08-docker
+docker build -t nginx-gsx ./nginx
+docker build -t simple-app-gsx ./simple-app
+```
+
+Build the builder stages explicitly:
+
+```bash
+docker build --target builder -t nginx-gsx-builder ./nginx
+docker build --target builder -t simple-app-gsx-builder ./simple-app
+```
+
+Verify that the builder-stage images exist:
+
+```bash
+docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+```
+
+Expected result:
+
+- the two final images exist
+- the two `*-builder` images exist
+- this proves the Dockerfiles contain a real named builder stage that can be targeted independently
+
+Verify that the final images still run correctly:
+
+```bash
+docker run -d -p 8081:80 --name nginx-server nginx-gsx
+curl.exe -sS http://localhost:8081/
+docker rm -f nginx-server
+
+docker run -d -p 5000:5000 --name simple-app-server simple-app-gsx
+curl.exe -sS http://localhost:5000/
+curl.exe -sS http://localhost:5000/health
+docker rm -f simple-app-server
+```
+
+Expected result:
+
+- Nginx still serves the `GreenDevCorp Nginx Container` page
+- the simple app still answers `/` and `/health`
+- the multistage refactor did not break runtime behavior
+
+Optional extra check:
+
+```bash
+docker history nginx-gsx
+docker history simple-app-gsx
+```
+
+This is useful in the demo because it shows the final runtime images are built from the final stage, not from a single-stage Dockerfile.
 
 ## 5. Advanced Security
 
@@ -398,7 +465,8 @@ The simple app ignores Python cache files, virtual environments, Git metadata, a
 - [x] File ownership handled with `COPY --chown`
 - [x] Non-root users used in both containers
 - [x] Image sizes measured and documented
-- [x] Multistage build decision documented
+- [x] Multistage builds implemented
+- [x] Multistage builds tested explicitly
 
 ### Advanced
 
